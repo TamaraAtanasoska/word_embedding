@@ -11,8 +11,8 @@ def parse_args():
 
     parser.add_argument(
         '--RUN_MODE', dest='RUN_MODE',
-        choices=['train', 'val', 'test'],
-        help='{train, val, test}',
+        choices=['train', 'val'],
+        help='{train, val}',
         type=str, required=True
     )
 
@@ -65,9 +65,6 @@ class MainExec(object):
             self.train()
         elif run_mode == 'val':
             print('Starting validation mode...')
-            self.eval()
-        elif run_mode == 'test':
-            print('Starting test mode...')
             self.eval()
         else:
             exit(-1)
