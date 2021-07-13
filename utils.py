@@ -8,6 +8,11 @@ from torch.utils.data import Dataset
 
 
 def preprocess(text):
+    """
+    This function converts raw text data into words and remove words with frequency less than 5
+    :param text: [string] sequence of string
+    :return: [list] list of words in raw data
+    """
     words = text.split()
     word_counts = Counter(words)
     trimmed_words = [word for word in words if word_counts[word] > 5]
@@ -15,10 +20,17 @@ def preprocess(text):
 
 
 def sub_sampling(tokens, threshold=1e-5):
+    """
+    This function samples words from a defined probability distribution in order to counter imbalance of
+    the rare and frequent words. Proposed probability is chances that a word will be discarded from training set.
+    :param tokens: [list] dataset in integer form
+    :param threshold: [float]
+    :return: [list] subsampled training data
+    """
     words_count = Counter(tokens)
     total_words = len(tokens)
     word_freq = {word: count / total_words for word, count in words_count.items()}
-    word_prob = {word: 1 - np.sqrt(threshold / word_freq[word]) for word in words_count}
+    word_prob = {word: 1 - np.sqrt(threshold / word_freq[word]) for word in words_count}  # Proposed Probability
     sampled_vocab = [word for word in tokens if random.random() < word_prob[word]]
     return sampled_vocab
 
@@ -77,11 +89,10 @@ class Loader(object):
 
     def load(self, path):
         file = open(path).read()
-
         words = utils.preprocess(file)
         vocab = utils.Vocabulary()
         vocab.create_vocab(words)
-
+        print('Vocabulary created')
         return words, vocab
 
 
@@ -101,6 +112,12 @@ class Dataset(Dataset):
             self.data_dict[item]['data'], self.data_dict[item]['vocab'] = self.loader.load(path)
 
     def __getitem__(self, idx):
+        """
+        :param idx: [int] index for dataset object
+        :return: [tuple] value at given index and a vocabulary object
+        """
+
+        # TO DO : This looks inefficient for as we are sending vocabulary with each word. Should be taken care in future
         return self.data_dict[self.args.RUN_MODE]['data'][idx], self.data_dict[self.args.RUN_MODE]['vocab']
 
     def __len__(self):
@@ -116,26 +133,35 @@ class Dataloader(object):
         self.window_size = window_size
         self.shuffle = shuffle  # TO DO
 
-    def get_target(self, idx):
-        R = np.random.randint(1, self.window_size + 1)
-        start = idx - R if (idx - R) > 0 else 0
-        stop = idx + R
-        target_words = self.tokens[start:idx] + self.tokens[idx + 1:stop + 1]
+    def get_context(self, batch, idx):
+        """
+        This function returns list of context words for a given target word from batch
+        :param batch: [list] sequence of training data in tokenized form
+        :param idx: [int] index of target word in the batch
+        :return: [list] list of c context words for given target word
+        """
+        c = np.random.randint(1, self.window_size + 1)
+        start = idx - c if (idx - c) > 0 else 0
+        stop = idx + c
+        target_words = batch[start:idx] + batch[idx + 1:stop + 1]
         return list(target_words)
 
     def get_batches(self):
+        """
+        It generate a batch of training data as pair of target and context word
+        :return: [list] [list] list of target words and their corresponding context words
+        """
         words = sub_sampling(self.tokens)
         n_batches = len(words) // self.batch_size
         # only full batches
         words = words[:n_batches * self.batch_size]
 
         for idx in range(0, len(words), self.batch_size):
-            x, y = [], []
+            target_words, context_words = [], []
             batch = words[idx:idx + self.batch_size]
-            for ii in range(len(batch)):
-                batch_x = batch[ii]
-                # print(batch_x)
-                batch_y = self.get_target(ii)
-                y.extend(batch_y)
-                x.extend([batch_x] * len(batch_y))
-            yield x, y
+            for target_idx in range(len(batch)):
+                batch_x = batch[target_idx]
+                batch_y = self.get_context(batch, target_idx)
+                context_words.extend(batch_y)
+                target_words.extend([batch_x] * len(batch_y))
+            yield target_words, context_words

@@ -5,6 +5,8 @@ data = utils.Dataset(args)
 dataloader = utils.Dataloader(dataset=data, batch_size=2)
 print(next(dataloader.get_batches()))
 
-## Better not use loop for now it will print alot of data
+# Better not use loop for now it will print a lot of data
+'''
 for input_words, target_words in dataloader.get_batches():
     print(input_words,target_words)
+'''
