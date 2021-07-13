@@ -4,6 +4,10 @@ import torch
 import yaml
 
 import utils
+from model import SkipGram, NegativeSamplingLoss
+
+from torch.optim import Adam
+
 
 def parse_args():
 
@@ -70,15 +74,33 @@ class MainExec(object):
 
     def overfit(self):
         data = utils.Dataset(args)
-        
-        model = None
-        loss_func = None
-        optimizer = None
         dataloader = utils.Dataloader(dataset=data, 
                                       batch_size = self.cfgs['BATCH_SIZE'],
                                      )
-        batch = next(iter(dataloader))
+        
+        data_size = len(dataloader.tokens)
+        model = SkipGram(self.cfgs, data_size)
+        loss_func = NegativeSamplingLoss(model, self.cfgs)
+        optimizer = Adam(model.parameters(), lr = self.cfgs['LEARNING_RATE'])
+        dataloader = utils.Dataloader(dataset=data, 
+                                      batch_size = self.cfgs['BATCH_SIZE'],
+                                     )
+        epoch_loss = 0
+        model.train()
 
+        input_words, target_words = next(iter(dataloader.get_batches())) 
+        inputs, targets = torch.LongTensor(input_words), \
+                          torch.LongTensor(target_words)
+
+        for epoch in range(self.cfgs['EPOCHS']):
+            optimizer.zero_grad()
+    
+            loss = loss_func(inputs, targets)
+            loss.backward()
+            optimizer.step()
+      
+            print('epoch {}, loss {}'.format(epoch, round(loss.item(), 3))) 
+       
 
     def run(self, run_mode):
         if run_mode == 'train' and self.args.DEBUG:
