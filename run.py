@@ -1,6 +1,7 @@
 import argparse
 import os
 import torch
+import yaml
 
 import utils
 
@@ -34,8 +35,9 @@ def parse_args():
 
 
 class MainExec(object):
-    def __init__(self, args):
+    def __init__(self, args, config):
         self.args = args
+        self.cfgs = config
 
         if self.args.CPU:
             self.device = torch.device("cpu")
@@ -52,8 +54,7 @@ class MainExec(object):
         loss_func = None
         optimizer = None
         dataloader = utils.Dataloader(dataset = data, 
-                                      batch_size = 2,
-                                      num_workers = 4,
+                                      batch_size = self.cfgs['BATCH_SIZE'],
                                      )
 
 
@@ -63,8 +64,7 @@ class MainExec(object):
         model = None
         loss_func = None
         dataloader = utils.Dataloader(dataset = data, 
-                                      batch_size = 2,
-                                      num_workers = 4,
+                                      batch_size = self.cfgs['BATCH_SIZE'],
                                      )
 
 
@@ -75,8 +75,7 @@ class MainExec(object):
         loss_func = None
         optimizer = None
         dataloader = utils.Dataloader(dataset=data, 
-                                      batch_size=2,
-                                      num_workers = 4,
+                                      batch_size = self.cfgs['BATCH_SIZE'],
                                      )
         batch = next(iter(dataloader))
 
@@ -98,5 +97,8 @@ class MainExec(object):
 if __name__ == "__main__":
     args = parse_args()
 
-    exec = MainExec(args)
+    with open('./config.yml', 'r') as f:
+        config = yaml.safe_load(f)
+
+    exec = MainExec(args, config)
     exec.run(args.RUN_MODE)
