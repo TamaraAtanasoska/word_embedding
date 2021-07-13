@@ -2,6 +2,7 @@ import argparse
 import os
 import torch
 
+import utils
 
 def parse_args():
 
@@ -45,15 +46,39 @@ class MainExec(object):
 
 
     def train(self):
-        pass
+        data = utils.Dataset(args)
+        
+        model = None
+        loss_func = None
+        optimizer = None
+        dataloader = utils.Dataloader(dataset = data, 
+                                      batch_size = 2,
+                                      num_workers = 4,
+                                     )
 
 
     def eval(self):
-        pass
+        data = utils.Dataset(args)
+        
+        model = None
+        loss_func = None
+        dataloader = utils.Dataloader(dataset = data, 
+                                      batch_size = 2,
+                                      num_workers = 4,
+                                     )
 
 
     def overfit(self):
-        pass
+        data = utils.Dataset(args)
+        
+        model = None
+        loss_func = None
+        optimizer = None
+        dataloader = utils.Dataloader(dataset=data, 
+                                      batch_size=2,
+                                      num_workers = 4,
+                                     )
+        batch = next(iter(dataloader))
 
 
     def run(self, run_mode):
