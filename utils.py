@@ -111,7 +111,7 @@ class Dataset(Dataset):
         self.args = args
         # self.config = config
         self.loader = Loader(args)
-        self.split = {'val': 'eval'}
+        self.split = {'train': 'train', 'val': 'eval'}
         self.data_dict = dd(dd)
 
         # Based on dataset statistics, not many examples length > 50

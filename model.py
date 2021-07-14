@@ -26,7 +26,7 @@ class SkipGram(nn.Module):
         return self.out_embeddings(data)
 
     def forward_neg(self, updated_batch_size):
-        ng_dist = torch.ones(self.vocab_size) if not self.ng_dist else self.ng_dist
+        ng_dist = torch.ones(self.vocab_size) if self.ng_dist is None else self.ng_dist
         ng_words = torch.multinomial(ng_dist,
                                      updated_batch_size * self.cfgs['NG_WORDS'],
                                      replacement = True
