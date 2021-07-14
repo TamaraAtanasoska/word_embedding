@@ -58,8 +58,8 @@ class MainExec(object):
                                      )
         
         data_size = len(dataloader.tokens)
-        model = SkipGram(self.cfgs, data_size)
-        loss_func = NegativeSamplingLoss(model, self.cfgs)
+        model = SkipGram(self.cfgs, data_size).to(self.device)
+        loss_func = NegativeSamplingLoss(model, self.cfgs).to(self.device)
         optimizer = Adam(model.parameters(), lr = self.cfgs['LEARNING_RATE'])
        
         loss_sum = 0 
@@ -68,8 +68,8 @@ class MainExec(object):
         for epoch in range(self.cfgs['EPOCHS']):
             for input_words, target_words in dataloader.get_batches():
             
-                inputs, targets = torch.LongTensor(input_words), \
-                                  torch.LongTensor(target_words)
+                inputs, targets = torch.LongTensor(input_words).to(self.device), \
+                                  torch.LongTensor(target_words).to(self.device)
 
                 optimizer.zero_grad() 
                 loss = loss_func(inputs, targets)
@@ -97,15 +97,15 @@ class MainExec(object):
                                      )
         
         data_size = len(dataloader.tokens)
-        model = SkipGram(self.cfgs, data_size)
-        loss_func = NegativeSamplingLoss(model, self.cfgs)
+        model = SkipGram(self.cfgs, data_size).to(self.device)
+        loss_func = NegativeSamplingLoss(model, self.cfgs).to(self.device)
         optimizer = Adam(model.parameters(), lr = self.cfgs['LEARNING_RATE'])
         
         model.train()
 
         input_words, target_words = next(iter(dataloader.get_batches())) 
-        inputs, targets = torch.LongTensor(input_words), \
-                          torch.LongTensor(target_words)
+        inputs, targets = torch.LongTensor(input_words).to(self.device), \
+                          torch.LongTensor(target_words).to(self.device)
 
         for epoch in range(self.cfgs['EPOCHS']):
             optimizer.zero_grad()
