@@ -53,14 +53,32 @@ class MainExec(object):
 
     def train(self):
         data = utils.Dataset(args)
-        
-        model = None
-        loss_func = None
-        optimizer = None
-        dataloader = utils.Dataloader(dataset = data, 
+        dataloader = utils.Dataloader(dataset=data, 
                                       batch_size = self.cfgs['BATCH_SIZE'],
                                      )
+        
+        data_size = len(dataloader.tokens)
+        model = SkipGram(self.cfgs, data_size)
+        loss_func = NegativeSamplingLoss(model, self.cfgs)
+        optimizer = Adam(model.parameters(), lr = self.cfgs['LEARNING_RATE'])
+       
+        loss_sum = 0 
+        model.train()
 
+        for epoch in range(self.cfgs['EPOCHS']):
+            for input_words, target_words in dataloader.get_batches():
+            
+                inputs, targets = torch.LongTensor(input_words), \
+                                  torch.LongTensor(target_words)
+
+                optimizer.zero_grad() 
+                loss = loss_func(inputs, targets)
+                loss.backward()
+                optimizer.step()
+
+                loss_sum += loss.item()
+      
+            print('epoch {}, loss {}'.format(epoch, loss_sum/data_size)) 
 
     def eval(self):
         data = utils.Dataset(args)
@@ -82,10 +100,7 @@ class MainExec(object):
         model = SkipGram(self.cfgs, data_size)
         loss_func = NegativeSamplingLoss(model, self.cfgs)
         optimizer = Adam(model.parameters(), lr = self.cfgs['LEARNING_RATE'])
-        dataloader = utils.Dataloader(dataset=data, 
-                                      batch_size = self.cfgs['BATCH_SIZE'],
-                                     )
-        epoch_loss = 0
+        
         model.train()
 
         input_words, target_words = next(iter(dataloader.get_batches())) 
@@ -98,7 +113,7 @@ class MainExec(object):
             loss = loss_func(inputs, targets)
             loss.backward()
             optimizer.step()
-      
+        
             print('epoch {}, loss {}'.format(epoch, round(loss.item(), 3))) 
        
 
