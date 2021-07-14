@@ -2,7 +2,7 @@ import nltk
 import numpy as np
 import os, utils
 from collections import Counter, defaultdict as dd
-import re
+import re, torch
 import random
 from torch.utils.data import Dataset
 
@@ -33,6 +33,16 @@ def sub_sampling(tokens, threshold=1e-5):
     word_prob = {word: 1 - np.sqrt(threshold / word_freq[word]) for word in words_count}  # Proposed Probability
     sampled_vocab = [word for word in tokens if random.random() < word_prob[word]]
     return sampled_vocab
+
+
+def get_noise_dist(words):
+    counter = Counter(words)
+    total = len(words)
+    freqs = {word: count / total for word, count in counter.items()}
+    word_freqs = np.array(sorted(freqs.values(), reverse=True))
+    unigram_dist = word_freqs / word_freqs.sum()
+    noise_dist = torch.from_numpy(unigram_dist ** (0.75) / np.sum(unigram_dist ** (0.75)))
+    return noise_dist
 
 
 class Vocabulary(object):
@@ -99,8 +109,9 @@ class Loader(object):
 class Dataset(Dataset):
     def __init__(self, args):
         self.args = args
+        # self.config = config
         self.loader = Loader(args)
-        self.split = {'train': 'train', 'val': 'eval'}
+        self.split = {'val': 'eval'}
         self.data_dict = dd(dd)
 
         # Based on dataset statistics, not many examples length > 50
@@ -110,6 +121,12 @@ class Dataset(Dataset):
         for item in self.split:
             path = 'data/' + self.split[item]
             self.data_dict[item]['data'], self.data_dict[item]['vocab'] = self.loader.load(path)
+
+    def get_data(self, split):
+        return self.data_dict[split]['data']
+
+    def get_vocab(self, split):
+        return self.data_dict[split]['vocab']
 
     def __getitem__(self, idx):
         """
@@ -125,9 +142,9 @@ class Dataset(Dataset):
 
 
 class Dataloader(object):
-    def __init__(self, dataset, batch_size=5, shuffle=True, window_size=5):
-        self.words = [word for word, _ in dataset]
-        self.vocab = dataset[0][1]
+    def __init__(self, dataset, split, batch_size=5, shuffle=True, window_size=5):
+        self.words = dataset.get_data(split)
+        self.vocab = dataset.get_vocab(split)
         self.tokens = [self.vocab.lookup_token(word) for word in self.words]
         self.batch_size = batch_size
         self.window_size = window_size
