@@ -4,6 +4,10 @@ import torch
 import yaml
 
 import utils
+from model import SkipGram, NegativeSamplingLoss
+
+from torch.optim import Adam
+
 
 def parse_args():
 
@@ -49,14 +53,32 @@ class MainExec(object):
 
     def train(self):
         data = utils.Dataset(args)
-        
-        model = None
-        loss_func = None
-        optimizer = None
-        dataloader = utils.Dataloader(dataset = data, 
+        dataloader = utils.Dataloader(dataset=data, 
                                       batch_size = self.cfgs['BATCH_SIZE'],
                                      )
+        
+        data_size = len(dataloader.tokens)
+        model = SkipGram(self.cfgs, data_size).to(self.device)
+        loss_func = NegativeSamplingLoss(model, self.cfgs).to(self.device)
+        optimizer = Adam(model.parameters(), lr = self.cfgs['LEARNING_RATE'])
+       
+        loss_sum = 0 
+        model.train()
 
+        for epoch in range(self.cfgs['EPOCHS']):
+            for input_words, target_words in dataloader.get_batches():
+            
+                inputs, targets = torch.LongTensor(input_words).to(self.device), \
+                                  torch.LongTensor(target_words).to(self.device)
+
+                optimizer.zero_grad() 
+                loss = loss_func(inputs, targets)
+                loss.backward()
+                optimizer.step()
+
+                loss_sum += loss.item()
+      
+            print('epoch {}, loss {}'.format(epoch, loss_sum/data_size)) 
 
     def eval(self):
         data = utils.Dataset(args)
@@ -70,15 +92,30 @@ class MainExec(object):
 
     def overfit(self):
         data = utils.Dataset(args)
-        
-        model = None
-        loss_func = None
-        optimizer = None
         dataloader = utils.Dataloader(dataset=data, 
                                       batch_size = self.cfgs['BATCH_SIZE'],
                                      )
-        batch = next(iter(dataloader))
+        
+        data_size = len(dataloader.tokens)
+        model = SkipGram(self.cfgs, data_size).to(self.device)
+        loss_func = NegativeSamplingLoss(model, self.cfgs).to(self.device)
+        optimizer = Adam(model.parameters(), lr = self.cfgs['LEARNING_RATE'])
+        
+        model.train()
 
+        input_words, target_words = next(iter(dataloader.get_batches())) 
+        inputs, targets = torch.LongTensor(input_words).to(self.device), \
+                          torch.LongTensor(target_words).to(self.device)
+
+        for epoch in range(self.cfgs['EPOCHS']):
+            optimizer.zero_grad()
+    
+            loss = loss_func(inputs, targets)
+            loss.backward()
+            optimizer.step()
+        
+            print('epoch {}, loss {}'.format(epoch, round(loss.item(), 3))) 
+       
 
     def run(self, run_mode):
         if run_mode == 'train' and self.args.DEBUG:
