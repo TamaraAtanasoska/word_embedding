@@ -34,6 +34,11 @@ def parse_args():
         action='store_true'
     )
 
+    parser.add_argument(
+        '--SUBSAMPLING', dest='SUBSAMPLING',
+        help='add subsampling to words',
+        action='store_true'
+    )
     args = parser.parse_args()
     return args
 
@@ -42,6 +47,7 @@ class MainExec(object):
     def __init__(self, args, config):
         self.args = args
         self.cfgs = config
+        self.subsampling = True if self.args.SUBSAMPLING else False
 
         if self.args.CPU:
             self.device = torch.device("cpu")
@@ -58,6 +64,7 @@ class MainExec(object):
         dataloader = utils.Dataloader(dataset = dataset, 
                                       split = args.RUN_MODE, 
                                       batch_size = self.cfgs['BATCH_SIZE'],
+                                      subsampling = self.subsampling,
                                      )
         
         data_size = len(dataloader.tokens)
@@ -100,6 +107,7 @@ class MainExec(object):
         dataloader = utils.Dataloader(dataset = dataset,
                                       split = args.RUN_MODE, 
                                       batch_size = self.cfgs['BATCH_SIZE'],
+                                      subsampling = self.subsampling,
                                      )
         
         data_size = len(dataloader.tokens)

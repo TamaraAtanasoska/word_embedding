@@ -27,6 +27,7 @@ def sub_sampling(tokens, threshold=1e-5):
     :param threshold: [float]
     :return: [list] subsampled training data
     """
+    print("Running subsampling...")
     words_count = Counter(tokens)
     total_words = len(tokens)
     word_freq = {word: count / total_words for word, count in words_count.items()}
@@ -142,13 +143,21 @@ class Dataset(Dataset):
 
 
 class Dataloader(object):
-    def __init__(self, dataset, split, batch_size=5, shuffle=True, window_size=5):
+    def __init__(self, 
+                 dataset, 
+                 split, 
+                 batch_size = 5, 
+                 shuffle = True,
+                 window_size = 5, 
+                 subsampling = False
+                ):
         self.words = dataset.get_data(split)
         self.vocab = dataset.get_vocab(split)
         self.tokens = [self.vocab.lookup_token(word) for word in self.words]
         self.batch_size = batch_size
         self.window_size = window_size
         self.shuffle = shuffle  # TO DO
+        self.subsampling = subsampling
 
     def get_context(self, batch, idx):
         """
@@ -168,7 +177,7 @@ class Dataloader(object):
         It generate a batch of training data as pair of target and context word
         :return: [list] [list] list of target words and their corresponding context words
         """
-        words = sub_sampling(self.tokens)
+        words = sub_sampling(self.tokens) if self.subsampling else self.tokens
         n_batches = len(words) // self.batch_size
         # only full batches
         words = words[:n_batches * self.batch_size]
