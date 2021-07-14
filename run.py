@@ -52,13 +52,16 @@ class MainExec(object):
 
 
     def train(self):
-        data = utils.Dataset(args)
-        dataloader = utils.Dataloader(dataset=data, 
+        dataset = utils.Dataset(args)
+        data = dataset.get_data(split = args.RUN_MODE)
+        ng_dist = utils.get_noise_dist(data)
+        dataloader = utils.Dataloader(dataset = dataset, 
+                                      split = args.RUN_MODE, 
                                       batch_size = self.cfgs['BATCH_SIZE'],
                                      )
         
         data_size = len(dataloader.tokens)
-        model = SkipGram(self.cfgs, data_size).to(self.device)
+        model = SkipGram(self.cfgs, data_size, ng_dist).to(self.device)
         loss_func = NegativeSamplingLoss(model, self.cfgs).to(self.device)
         optimizer = Adam(model.parameters(), lr = self.cfgs['LEARNING_RATE'])
        
@@ -91,13 +94,16 @@ class MainExec(object):
 
 
     def overfit(self):
-        data = utils.Dataset(args)
-        dataloader = utils.Dataloader(dataset=data, 
+        dataset = utils.Dataset(args)
+        data = dataset.get_data(split = args.RUN_MODE)
+        ng_dist = utils.get_noise_dist(data)
+        dataloader = utils.Dataloader(dataset = dataset,
+                                      split = args.RUN_MODE, 
                                       batch_size = self.cfgs['BATCH_SIZE'],
                                      )
         
         data_size = len(dataloader.tokens)
-        model = SkipGram(self.cfgs, data_size).to(self.device)
+        model = SkipGram(self.cfgs, data_size, ng_dist).to(self.device)
         loss_func = NegativeSamplingLoss(model, self.cfgs).to(self.device)
         optimizer = Adam(model.parameters(), lr = self.cfgs['LEARNING_RATE'])
         
