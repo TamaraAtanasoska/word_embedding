@@ -10,6 +10,7 @@ import yaml
 with open('./config.yml', 'r') as f:
     config = yaml.safe_load(f)
 
+
 def preprocess(text):
     """
     This function converts raw text data into words and remove words with frequency less than 5
@@ -18,7 +19,7 @@ def preprocess(text):
     """
     words = text.split()
     word_counts = Counter(words)
-    trimmed_words = [word for word in words if word_counts[word] > 5]
+    trimmed_words = [word + '</w>' for word in words if word_counts[word] > 5]
     return trimmed_words
 
 
@@ -49,6 +50,7 @@ def cosine_similarity(embedding, valid_size=16, valid_window=100, device='cpu'):
 
     return valid_examples, similarities
 
+
 def sub_sampling(tokens, threshold=1e-5):
     """
     This function samples words from a defined probability distribution in order to counter imbalance of
@@ -75,13 +77,20 @@ def get_noise_dist(words):
     noise_dist = torch.from_numpy(unigram_dist ** (0.75) / np.sum(unigram_dist ** (0.75)))
     return noise_dist
 
-def build_vocab(corpus: str) -> dict:
-    tokens = [" ".join(word) + " </w>" for word in corpus]
-    vocab = Counter(tokens)  
-    return vocab
+
+def merge_vocab(pair: tuple, v_in: dict) -> dict:
+    v_out = {}
+    bigram = re.escape(' '.join(pair))
+    p = re.compile(r'(?<!\S)' + bigram + r'(?!\S)')
+
+    for word in v_in:
+        w_out = p.sub(''.join(pair), word)
+        v_out[w_out] = v_in[word]
+
+    return v_out
 
 
-def get_stats(vocab: dict) -> dict:
+def get_pairs(vocab: dict) -> dict:
     pairs = dd(int)
     for word, frequency in vocab.items():
         symbols = word.split()
@@ -92,20 +101,29 @@ def get_stats(vocab: dict) -> dict:
     return pairs
 
 
-def merge_vocab(pair: tuple, v_in: dict) -> dict:
-    v_out = {}
-    bigram = re.escape(' '.join(pair))
-    p = re.compile(r'(?<!\S)' + bigram + r'(?!\S)')
-    
-    for word in v_in:
-        w_out = p.sub(''.join(pair), word)
-        v_out[w_out] = v_in[word]
-
-    return v_out
+def segment_BPE(tokens, vocab):
+    outputs = []
+    for token in tokens:
+        start, end = 0, len(token)
+        cur_output = []
+        # Segment token with the longest possible subwords from symbols
+        while start < len(token) and start < end:
+            if token[start:end] in vocab:
+                cur_output.append(token[start:end])
+                start = end
+                end = len(token)
+            else:
+                end -= 1
+        if start < len(token):
+            cur_output.append('[UNK]')
+        outputs.append(' '.join(cur_output))
+    return outputs
 
 
 class Vocabulary(object):
-    def __init__(self, token_to_idx=None):
+    def __init__(self, cnfig, token_to_idx=None):
+
+        self.config = cnfig
         if token_to_idx is None:
             token_to_idx = {}
         self._token_to_idx = token_to_idx
@@ -132,19 +150,31 @@ class Vocabulary(object):
         return self._token_to_idx[token]
 
     def create_vocab(self, words):
-        word_counts = Counter(words)
-        # sorting the words from most to least frequent in text occurrence
-        sorted_vocab = sorted(word_counts, key=word_counts.get, reverse=True)
-        # create int_to_vocab dictionaries
-        self._idx_to_token = {ii: word for ii, word in enumerate(sorted_vocab)}
+        tokens = [" ".join(word) for word in words]
+        vocab = Counter(tokens)
+        for i in range(self.config['NUM_MERGES']):
+            pairs = get_pairs(vocab)
+            if not pairs:
+                break
+            best = max(pairs, key=pairs.get)
+            vocab = merge_vocab(best, vocab)
+        tokens = list(vocab.keys())
+        vocab = []
+        for token in tokens:
+            vocab += token.split()
+        vocab = set(vocab)  # ngrams from BPE algorithm
+        whole_words = set(
+            [word for word in words if word not in vocab])  # words not in ngram vocab
+        self._idx_to_token = {ii: word for ii, word in enumerate(list(vocab) + list(whole_words))}
         self._token_to_idx = {word: ii for ii, word in self._idx_to_token.items()}
-
-        return self._token_to_idx, self._idx_to_token
 
     def lookup_index(self, index):
         if index not in self._idx_to_token:
             raise KeyError("the index (%d) is not in the Vocabulary" % index)
         return self._idx_to_token[index]
+
+    def get_vocab(self):
+        return list(self._token_to_idx.keys())
 
     def __str__(self):
         return "<Vocabulary(size=%d)>" % len(self)
@@ -154,13 +184,14 @@ class Vocabulary(object):
 
 
 class Loader(object):
-    def __init__(self, args):
+    def __init__(self, args, cnfg):
         self.args = args
+        self.cnfg = cnfg
 
     def load(self, path):
         file = open(path).read()
         words = utils.preprocess(file)
-        vocab = utils.Vocabulary()
+        vocab = utils.Vocabulary(self.cnfg)
         vocab.create_vocab(words)
         print('Vocabulary created')
         return words, vocab
@@ -170,9 +201,9 @@ class Dataset(Dataset):
     def __init__(self, args, config):
         self.args = args
         self.config = config
-        self.loader = Loader(args)
-        #self.split = {'train': 'train', 'val': 'eval'}
-        self.split = {'train': 'train'}
+        self.loader = Loader(args, config)
+        # self.split = {'train': 'train', 'val': 'eval'}
+        self.split = {'train': 'tiny_eval'}
         self.data_dict = dd(dd)
 
         # Based on dataset statistics, not many examples length > 50
@@ -194,6 +225,7 @@ class Dataset(Dataset):
                 target_words.extend([target] * len(context))
             self.data_dict[item]['target'] = target_words
             self.data_dict[item]['context'] = context_words
+            self.data_dict[item]['ngram'] = self.get_ngram_token(item) if args.NGRAMS else None
             print('Data preparation completed')
 
     def get_context(self, split, idx):
@@ -213,40 +245,34 @@ class Dataset(Dataset):
     def get_data(self, split):
         return self.data_dict[split]['data']
 
-    def get_vocab(self, split):
+    def get_vocab_cls(self, split):
         return self.data_dict[split]['vocab']
 
     def get_tokens(self, split):
-        new_tokens = []
-        if self.args.NGRAMS:
-            print("Ngrams processing...") 
-
-            ngram_vocab = build_vocab(self.get_data(split)) 
-            for i in range(config['NUM_MERGES']):
-                pairs = get_stats(ngram_vocab)
-                if not pairs:
-                    break
-
-                best = max(pairs, key=pairs.get)
-                ngram_vocab = merge_vocab(best, ngram_vocab)
-
-            ngram_vocab = [*ngram_vocab]
-            print(ngram_vocab)
-            #new_tokens = [self.vocab.lookup_char_token(word) for word in ngram_vocab]
-        else:
-            words = self.get_data(split)
-            vocab = self.get_vocab(split)
-            tokens = [vocab.lookup_token(word) for word in words]
-            new_tokens = sub_sampling(tokens) if self.args.SUBSAMPLING else tokens
-
+        words = self.get_data(split)
+        vocab = self.get_vocab_cls(split)
+        tokens = [vocab.lookup_token(word) for word in words]
+        new_tokens = sub_sampling(tokens) if self.args.SUBSAMPLING else tokens
         return new_tokens
+
+    def get_ngram_token(self, split):
+        print("Ngrams processing...")
+        tokens = [word for word in self.get_data(split)]
+        vocab_cls = self.get_vocab_cls(split)
+        vocab = vocab_cls.get_vocab()
+        new_tokens = segment_BPE(tokens, vocab)
+        ngram_tokens = [list(vocab_cls.lookup_token(tok)) + [vocab_cls.lookup_token(gram) for gram in word.split()] for word, tok in zip(new_tokens, tokens)]
+        return ngram_tokens
 
     def __getitem__(self, idx):
         """
         :param idx: [int] index for dataset object
         :return: [tuple] value at given index and a vocabulary object
         """
-        return self.data_dict[self.args.RUN_MODE]['target'][idx], self.data_dict[self.args.RUN_MODE]['context'][idx]
+        if self.args.NGRAMS:
+            return self.data_dict[self.args.RUN_MODE]['ngram'][idx], self.data_dict[self.args.RUN_MODE]['context'][idx]
+        else:
+            return self.data_dict[self.args.RUN_MODE]['target'][idx], self.data_dict[self.args.RUN_MODE]['context'][idx]
 
     def __len__(self):
         return self.data_dict[self.args.RUN_MODE].__len__()
