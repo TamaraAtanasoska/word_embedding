@@ -2,13 +2,14 @@ import argparse
 import os
 import torch
 import yaml
-
+from tqdm import tqdm
 import utils
 from model import SkipGram, NegativeSamplingLoss
-
+from time import sleep
 from torch.optim import Adam
+from torch.utils.tensorboard import SummaryWriter
 
-
+writer = SummaryWriter('/home/users/bverma/project/bhuvanesh/tmp/tensorboard_dirs/we')
 def parse_args():
 
     """Parse input arguments"""
@@ -64,31 +65,40 @@ class MainExec(object):
         model = SkipGram(self.cfgs, data_size, ng_dist).to(self.device)
         loss_func = NegativeSamplingLoss(model, self.cfgs).to(self.device)
         optimizer = Adam(model.parameters(), lr = self.cfgs['LEARNING_RATE'])
-       
+        running_loss = 0.0
         loss_sum = 0 
         model.train()
-
+        print('Training started ...')
         for epoch in range(self.cfgs['EPOCHS']):
-            for input_words, target_words in dataloader.get_batches():
-            
-                inputs, targets = torch.LongTensor(input_words).to(self.device), \
-                                  torch.LongTensor(target_words).to(self.device)
+            with tqdm(dataloader.get_batches()) as tepoch:
+                for step, (
+                        input_words, target_words
+                ) in enumerate(tepoch):
+                    # for input_words, target_words in dataloader.get_batches():
+                    tepoch.set_description("Epoch {}".format(str(epoch)))
+                    inputs, targets = torch.LongTensor(input_words).to(self.device), \
+                                      torch.LongTensor(target_words).to(self.device)
 
-                optimizer.zero_grad() 
-                loss = loss_func(inputs, targets)
-                loss.backward()
-                optimizer.step()
+                    optimizer.zero_grad()
+                    loss = loss_func(inputs, targets)
+                    loss.backward()
+                    optimizer.step()
 
-                loss_sum += loss.item()
+                    loss_sum += loss.item()
+
+                    tepoch.set_postfix(loss=loss.item())
+                    sleep(0.1)
+                    writer.add_scalar('training loss', loss.item(), epoch + step)
       
-            print('epoch {}, loss {}'.format(epoch, loss_sum/data_size)) 
+            print('epoch {}, loss {}'.format(epoch, loss_sum/data_size))
+
 
     def eval(self):
         data = utils.Dataset(args)
         
         model = None
         loss_func = None
-        dataloader = utils.Dataloader(dataset = data, 
+        dataloader = utils.Dataloader(dataset = data, split = args.RUN_MODE,
                                       batch_size = self.cfgs['BATCH_SIZE'],
                                      )
 
@@ -106,22 +116,22 @@ class MainExec(object):
         model = SkipGram(self.cfgs, data_size, ng_dist).to(self.device)
         loss_func = NegativeSamplingLoss(model, self.cfgs).to(self.device)
         optimizer = Adam(model.parameters(), lr = self.cfgs['LEARNING_RATE'])
-        
+        running_loss = 0.0
         model.train()
-
         input_words, target_words = next(iter(dataloader.get_batches())) 
         inputs, targets = torch.LongTensor(input_words).to(self.device), \
                           torch.LongTensor(target_words).to(self.device)
 
         for epoch in range(self.cfgs['EPOCHS']):
+
             optimizer.zero_grad()
     
             loss = loss_func(inputs, targets)
             loss.backward()
             optimizer.step()
-        
-            print('epoch {}, loss {}'.format(epoch, round(loss.item(), 3))) 
-       
+            running_loss += loss.item()
+            print('epoch {}, loss {}'.format(epoch, round(loss.item(), 3)))
+            writer.add_scalar('training loss', round(loss.item(), 3) , epoch )
 
     def run(self, run_mode):
         if run_mode == 'train' and self.args.DEBUG:
