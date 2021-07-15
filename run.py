@@ -10,7 +10,7 @@ from torch.optim import Adam
 from torch.utils.tensorboard import SummaryWriter
 from torch.utils.data import DataLoader
 
-writer = SummaryWriter('/home/users/bverma/project/bhuvanesh/tmp/tensorboard_dirs/we')
+#writer = SummaryWriter('/home/users/bverma/project/bhuvanesh/tmp/tensorboard_dirs/we')
 def parse_args():
 
     """Parse input arguments"""
@@ -41,6 +41,12 @@ def parse_args():
         help='add subsampling to words',
         action='store_true'
     )
+
+    parser.add_argument(
+        '--NGRAMS', dest='NGRAMS',
+        help='adding ngrams to tokens',
+        action='store_true'
+    )
     args = parser.parse_args()
     return args
 
@@ -50,6 +56,7 @@ class MainExec(object):
         self.args = args
         self.cfgs = config
         self.subsampling = True if self.args.SUBSAMPLING else False
+        self.ngrams = True if self.args.NGRAMS else False
 
         if self.args.CPU:
             self.device = torch.device("cpu")

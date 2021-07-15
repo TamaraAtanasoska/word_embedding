@@ -5,7 +5,10 @@ from collections import Counter, defaultdict as dd
 import re, torch
 import random
 from torch.utils.data import Dataset
+import yaml
 
+with open('./config.yml', 'r') as f:
+    config = yaml.safe_load(f)
 
 def preprocess(text):
     """
@@ -45,6 +48,34 @@ def get_noise_dist(words):
     noise_dist = torch.from_numpy(unigram_dist ** (0.75) / np.sum(unigram_dist ** (0.75)))
     return noise_dist
 
+def build_vocab(corpus: str) -> dict:
+    tokens = [" ".join(word) + " </w>" for word in corpus]
+    vocab = Counter(tokens)  
+    return vocab
+
+
+def get_stats(vocab: dict) -> dict:
+    pairs = dd(int)
+    for word, frequency in vocab.items():
+        symbols = word.split()
+
+        for i in range(len(symbols) - 1):
+            pairs[symbols[i], symbols[i + 1]] += frequency
+
+    return pairs
+
+
+def merge_vocab(pair: tuple, v_in: dict) -> dict:
+    v_out = {}
+    bigram = re.escape(' '.join(pair))
+    p = re.compile(r'(?<!\S)' + bigram + r'(?!\S)')
+    
+    for word in v_in:
+        w_out = p.sub(''.join(pair), word)
+        v_out[w_out] = v_in[word]
+
+    return v_out
+
 
 class Vocabulary(object):
     def __init__(self, token_to_idx=None):
@@ -70,6 +101,7 @@ class Vocabulary(object):
         return index
 
     def lookup_token(self, token):
+        print(token)
         return self._token_to_idx[token]
 
     def create_vocab(self, words):
@@ -158,10 +190,28 @@ class Dataset(Dataset):
         return self.data_dict[split]['vocab']
 
     def get_tokens(self, split):
-        words = self.get_data(split)
-        vocab = self.get_vocab(split)
-        tokens = [vocab.lookup_token(word) for word in words]
-        new_tokens = sub_sampling(tokens) if self.args.SUBSAMPLING else tokens
+        new_tokens = []
+        if self.args.NGRAMS:
+            print("Ngrams processing...") 
+
+            ngram_vocab = build_vocab(self.get_data(split)) 
+            for i in range(config['NUM_MERGES']):
+                pairs = get_stats(ngram_vocab)
+                if not pairs:
+                    break
+
+                best = max(pairs, key=pairs.get)
+                ngram_vocab = merge_vocab(best, ngram_vocab)
+
+            ngram_vocab = [*ngram_vocab]
+            print(ngram_vocab)
+            #new_tokens = [self.vocab.lookup_char_token(word) for word in ngram_vocab]
+        else:
+            words = self.get_data(split)
+            vocab = self.get_vocab(split)
+            tokens = [vocab.lookup_token(word) for word in words]
+            new_tokens = sub_sampling(tokens) if self.args.SUBSAMPLING else tokens
+
         return new_tokens
 
     def __getitem__(self, idx):
