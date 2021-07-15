@@ -94,7 +94,17 @@ class MainExec(object):
                     tepoch.set_postfix(loss=loss.item())
                     sleep(0.1)
                     writer.add_scalar('training loss', loss.item(), epoch + step)
-      
+                    if step % 1000 == 0:
+                        print("Epoch: {}/{}".format(epoch + 1, self.cfgs['EPOCHS']))
+                        print("Loss: ", loss.item())  # avg batch loss at this point in training
+                        valid_examples, valid_similarities = utils.cosine_similarity(model.in_embeddings, device=self.device)
+                        _, closest_idxs = valid_similarities.topk(6)
+
+                        valid_examples, closest_idxs = valid_examples.to('cpu'), closest_idxs.to('cpu')
+                        for ii, valid_idx in enumerate(valid_examples):
+                            closest_words = [vocab.lookup_index(idx.item()) for idx in closest_idxs[ii]][1:]
+                            print(vocab.lookup_index(valid_idx.item()) + " | " + ', '.join(closest_words))
+                        print("...\n")
             print('epoch {}, loss {}'.format(epoch, loss_sum/data_size))
 
 
