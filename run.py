@@ -8,7 +8,6 @@ from model import SkipGram, NegativeSamplingLoss
 from time import sleep
 from torch.optim import Adam
 from torch.utils.tensorboard import SummaryWriter
-from torch.utils.data import DataLoader
 
 #writer = SummaryWriter('/home/users/bverma/project/bhuvanesh/tmp/tensorboard_dirs/we')
 def parse_args():
@@ -67,8 +66,9 @@ class MainExec(object):
 
 
     def train(self):
-        dataset = utils.Dataset(args,config)
+        dataset = utils.Dataset(args)
         data = dataset.get_data(split = args.RUN_MODE)
+
         vocab = dataset.get_vocab_cls(split=args.RUN_MODE)
         ng_dist = utils.get_noise_dist(data)
         dataloader = utils.DataLoader(dataset, config['BATCH_SIZE'])
@@ -78,7 +78,7 @@ class MainExec(object):
         model = SkipGram(self.cfgs, data_size, ng_dist).to(self.device)
         loss_func = NegativeSamplingLoss(model, self.cfgs).to(self.device)
         optimizer = Adam(model.parameters(), lr = self.cfgs['LEARNING_RATE'])
-
+        running_loss = 0.0
         loss_sum = 0 
         model.train()
         print('Training started ...')
@@ -122,19 +122,22 @@ class MainExec(object):
 
 
     def overfit(self):
-        dataset = utils.Dataset(args, config)
-        data = dataset.get_data(split=args.RUN_MODE)
-        vocab = dataset.get_vocab(split=args.RUN_MODE)
+        dataset = utils.Dataset(args)
+        data = dataset.get_data(split = args.RUN_MODE)
         ng_dist = utils.get_noise_dist(data)
-        dataloader = DataLoader(dataset, config['BATCH_SIZE'])
-
-        data_size = len(vocab)
+        dataloader = utils.Dataloader(dataset = dataset,
+                                      split = args.RUN_MODE, 
+                                      batch_size = self.cfgs['BATCH_SIZE'],
+                                      subsampling = self.subsampling,
+                                     )
+        
+        data_size = len(dataloader.tokens)
         model = SkipGram(self.cfgs, data_size, ng_dist).to(self.device)
         loss_func = NegativeSamplingLoss(model, self.cfgs).to(self.device)
-        optimizer = Adam(model.parameters(), lr=self.cfgs['LEARNING_RATE'])
-
+        optimizer = Adam(model.parameters(), lr = self.cfgs['LEARNING_RATE'])
+        running_loss = 0.0
         model.train()
-        input_words, target_words = next(iter(dataloader))
+        input_words, target_words = next(iter(dataloader.get_batches())) 
         inputs, targets = torch.LongTensor(input_words).to(self.device), \
                           torch.LongTensor(target_words).to(self.device)
 
@@ -145,6 +148,7 @@ class MainExec(object):
             loss = loss_func(inputs, targets)
             loss.backward()
             optimizer.step()
+            running_loss += loss.item()
             print('epoch {}, loss {}'.format(epoch, round(loss.item(), 3)))
             #writer.add_scalar('training loss', round(loss.item(), 3) , epoch )
 
