@@ -20,7 +20,11 @@ class SkipGram(nn.Module):
         torch.nn.init.uniform_(self.out_embeddings.weight, -1, 1)
    
     def forward_in(self, data):
-        return self.in_embeddings(data)
+        input = torch.empty([len(data),self.embedding_dim], dtype=torch.float)
+        for i, instance in enumerate(data):
+            instance = torch.LongTensor(instance).to(device)
+            input[i] = sum(self.in_embeddings(instance))
+        return input.to(device)
     
     def forward_out(self, data):
         return self.out_embeddings(data)
@@ -48,12 +52,12 @@ class NegativeSamplingLoss(nn.Module):
         self.cfgs = configs
 
     def forward(self, input_words, output_words):
-        updated_batch_size = input_words.shape[0]
 
         in_embed = self.skipgram.forward_in(input_words).unsqueeze(2)
         out_embed = self.skipgram.forward_out(output_words).unsqueeze(1)
+        updated_batch_size = in_embed.shape[0]
         ng_embed = self.skipgram.forward_neg(updated_batch_size).neg()
-       
+        #print((in_embed.dtype), out_embed.dtype)
         out_loss = torch.bmm(in_embed, out_embed).squeeze().sigmoid().log()
         neg_loss = torch.bmm(ng_embed, in_embed).squeeze().sigmoid().log().sum(1)
         neg_samp_loss = -(out_loss.T + neg_loss).mean()
