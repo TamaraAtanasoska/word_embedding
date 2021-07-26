@@ -9,7 +9,7 @@ from time import sleep
 from torch.optim import Adam
 from torch.utils.tensorboard import SummaryWriter
 
-writer = SummaryWriter('/home/users/bverma/project/bhuvanesh/tmp/tensorboard_dirs/we')
+#writer = SummaryWriter('/home/users/bverma/project/bhuvanesh/tmp/tensorboard_dirs/we')
 def parse_args():
 
     """Parse input arguments"""
@@ -40,6 +40,12 @@ def parse_args():
         help='add subsampling to words',
         action='store_true'
     )
+
+    parser.add_argument(
+        '--NGRAMS', dest='NGRAMS',
+        help='adding ngrams to tokens',
+        action='store_true'
+    )
     args = parser.parse_args()
     return args
 
@@ -49,6 +55,7 @@ class MainExec(object):
         self.args = args
         self.cfgs = config
         self.subsampling = True if self.args.SUBSAMPLING else False
+        self.ngrams = True if self.args.NGRAMS else False
 
         if self.args.CPU:
             self.device = torch.device("cpu")
@@ -61,14 +68,13 @@ class MainExec(object):
     def train(self):
         dataset = utils.Dataset(args)
         data = dataset.get_data(split = args.RUN_MODE)
+
+        vocab = dataset.get_vocab_cls(split=args.RUN_MODE)
         ng_dist = utils.get_noise_dist(data)
-        dataloader = utils.Dataloader(dataset = dataset, 
-                                      split = args.RUN_MODE, 
-                                      batch_size = self.cfgs['BATCH_SIZE'],
-                                      subsampling = self.subsampling,
-                                     )
+        dataloader = utils.DataLoader(dataset, config['BATCH_SIZE'])
         
-        data_size = len(dataloader.tokens)
+        data_size = len(vocab)
+        print(data_size)
         model = SkipGram(self.cfgs, data_size, ng_dist).to(self.device)
         loss_func = NegativeSamplingLoss(model, self.cfgs).to(self.device)
         optimizer = Adam(model.parameters(), lr = self.cfgs['LEARNING_RATE'])
@@ -83,11 +89,13 @@ class MainExec(object):
                 ) in enumerate(tepoch):
                     # for input_words, target_words in dataloader.get_batches():
                     tepoch.set_description("Epoch {}".format(str(epoch)))
-                    inputs, targets = torch.LongTensor(input_words).to(self.device), \
-                                      torch.LongTensor(target_words).to(self.device)
+                    #inputs, targets = torch.LongTensor(input_words).to(self.device),torch.LongTensor(target_words).to(self.device)
 
+                    # Input contains list of different length, therefore cannot be converted into LongTensor at this point
+
+                    targets = torch.LongTensor(target_words).to(self.device)
                     optimizer.zero_grad()
-                    loss = loss_func(inputs, targets)
+                    loss = loss_func(input_words, targets)
                     loss.backward()
                     optimizer.step()
 
@@ -95,8 +103,11 @@ class MainExec(object):
 
                     tepoch.set_postfix(loss=loss.item())
                     sleep(0.1)
-                    writer.add_scalar('training loss', loss.item(), epoch + step)
-      
+                   # writer.add_scalar('training loss', loss.item(), epoch + step)
+                    if step % 1000 == 0:
+                        print("Epoch: {}/{}".format(epoch + 1, self.cfgs['EPOCHS']))
+                        print("Loss: ", loss.item())  # avg batch loss at this point in training
+
             print('epoch {}, loss {}'.format(epoch, loss_sum/data_size))
 
 
@@ -139,7 +150,7 @@ class MainExec(object):
             optimizer.step()
             running_loss += loss.item()
             print('epoch {}, loss {}'.format(epoch, round(loss.item(), 3)))
-            writer.add_scalar('training loss', round(loss.item(), 3) , epoch )
+            #writer.add_scalar('training loss', round(loss.item(), 3) , epoch )
 
     def run(self, run_mode):
         if run_mode == 'train' and self.args.DEBUG:
