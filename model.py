@@ -20,10 +20,14 @@ class SkipGram(nn.Module):
         torch.nn.init.uniform_(self.out_embeddings.weight, -1, 1)
    
     def forward_in(self, data):
-        input = torch.empty([len(data),self.embedding_dim], dtype=torch.float)
+        input = torch.empty([len(data), self.embedding_dim], dtype=torch.float)
         for i, instance in enumerate(data):
-            instance = torch.LongTensor(instance).to(device)
-            input[i] = sum(self.in_embeddings(instance))
+            if type(instance) == int:
+                instance = torch.LongTensor([instance]).to(device)
+                input[i] = self.in_embeddings(instance)
+            else:
+                instance = torch.LongTensor(instance).to(device)
+                input[i] = sum(self.in_embeddings(instance))
         return input.to(device)
     
     def forward_out(self, data):

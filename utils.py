@@ -228,14 +228,12 @@ class Loader(object):
 
 
 class Dataset(Dataset):
-    def __init__(self, args):
+    def __init__(self, args, config):
         self.args = args
-
         self.config = config
         self.loader = Loader(args, config)
         # self.split = {'train': 'train', 'val': 'eval'}
         self.split = {'train': 'eval'}
-
         self.data_dict = dd(dd)
 
         # Based on dataset statistics, not many examples length > 50
@@ -245,7 +243,6 @@ class Dataset(Dataset):
         for item in self.split:
             path = 'data/' + self.split[item]
             self.data_dict[item]['data'], self.data_dict[item]['vocab'] = self.loader.load(path)
-
             print(str(item) + ' data loaded !')
             self.data_dict[item]['tokens'] = self.get_tokens(item)
             tokens = self.data_dict[item]['tokens']
@@ -296,7 +293,6 @@ class Dataset(Dataset):
         '''
         return self.data_dict[split]['vocab']
 
-
     def get_tokens(self, split: string) -> list:
         '''
         This function converts words from given split data into indices from vocabulary
@@ -308,7 +304,6 @@ class Dataset(Dataset):
         tokens = [vocab.lookup_token(word) for word in words]
         new_tokens = sub_sampling(tokens) if self.args.SUBSAMPLING else tokens
         return new_tokens
-
 
     def get_ngram_token(self, split: string) -> list:
         '''
@@ -333,12 +328,10 @@ class Dataset(Dataset):
         :param idx: [int] index for dataset object
         :return: [tuple] value at given index and a vocabulary object
         """
-
         if self.args.NGRAMS:
             return self.data_dict[self.args.RUN_MODE]['ngram'][idx], self.data_dict[self.args.RUN_MODE]['context'][idx]
         else:
             return self.data_dict[self.args.RUN_MODE]['target'][idx], self.data_dict[self.args.RUN_MODE]['context'][idx]
-
 
     def __len__(self):
         return self.data_dict[self.args.RUN_MODE].__len__()
@@ -361,4 +354,3 @@ class DataLoader(object):
         """
         for i in range(len(self.data)):
             yield self.data[i:i + self.batch_size]
-
