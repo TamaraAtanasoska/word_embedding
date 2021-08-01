@@ -1,16 +1,19 @@
 import nltk
 import numpy as np
-import os, utils, string
+import os, string
 from collections import Counter, defaultdict as dd
 import re, torch
+import torch.nn as nn
 import random
-
+from sklearn.metrics.pairwise import cosine_similarity
 from torch import Tensor
 from torch.utils.data import Dataset
 import yaml
 
 with open('./config.yml', 'r') as f:
     config = yaml.safe_load(f)
+
+device = 'cuda' if torch.cuda.is_available() else 'cpu'
 
 
 def preprocess(text: string) -> list:
@@ -23,6 +26,55 @@ def preprocess(text: string) -> list:
     word_counts = Counter(words)
     trimmed_words = [word + '</w>' for word in words if word_counts[word] > 5]
     return trimmed_words
+
+
+def word_analogy(words: list, embeddings: nn.Embedding, vocab, gram_model=False) -> string:
+    """
+    This function perform word analogy task to test how well word embeddings are trained.
+    NOTE:  This function expects given words to be part of vocabulary if gram_model = False i.e if we are not using
+            ngram model.
+    :param gram_model: Boolean to check if we'll use ngram model or not
+    :param vocab: Vocabulary of dataset
+    :param words: list of three words such that ### words[0] is to words[1] as words[2] is to ? ###
+    :param embeddings: trained embedding from our model
+    :return: target word which fits the analogy best
+    """
+
+    maximum_similarity = -99999
+    target = None
+    vectors = []
+    if gram_model:
+        words = vocab.lookup_ngram(words)
+        for i, word in enumerate(words):
+            ngrams = word.split(' ')
+            ngrams_idx = [vocab.lookup_token(ngram) for ngram in ngrams]
+            ngrams_idx = torch.LongTensor(ngrams_idx).to(device)
+            vectors.append(sum(embeddings(ngrams_idx)))
+            if word in vocab.get_vocab():
+                word_idx = vocab.lookup_token(word)
+                word_idx = torch.LongTensor([word_idx]).to(device)
+                vectors[i] = vectors[i] + embeddings(word_idx)
+    else:
+        for word in words:
+            word_idx = vocab.lookup_token(word)
+            word_idx = torch.LongTensor([word_idx]).to(device)
+            vectors.append(embeddings(word_idx))
+
+    for word in vocab.get_vocab():
+        if word in words:
+            continue
+        word_idx = vocab.lookup_token(word)
+        word_idx = torch.LongTensor([word_idx]).to(device)
+        wvec = embeddings(word_idx)
+        diff1 = vectors[1] - vectors[0]
+        diff2 = wvec - vectors[2]
+        similarity = cosine_similarity(diff1, diff2)
+
+        if similarity > maximum_similarity:
+            maximum_similarity = similarity
+            target = word
+
+    return target
 
 
 def sub_sampling(tokens: list, threshold=1e-5) -> list:
@@ -163,7 +215,7 @@ class Vocabulary(object):
         '''
 
         :param words: [list] list of words
-        :return: [list] list of ngrams in words
+        :return: [list] list of space seperated ngrams in words
         '''
         outputs = []
         vocab = self.get_ngram_vocab()
@@ -241,7 +293,7 @@ class Dataset(Dataset):
         print('Loading datasets...')
 
         for item in self.split:
-            path = 'data/' + self.split[item]
+            path = args.DATA + self.split[item]
             self.data_dict[item]['data'], self.data_dict[item]['vocab'] = self.loader.load(path)
             print(str(item) + ' data loaded !')
             self.data_dict[item]['tokens'] = self.get_tokens(item)
