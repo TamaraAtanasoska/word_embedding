@@ -27,12 +27,11 @@ def get_WS353():
 def get_RG65():
     """
     Rubenstein and Goodenough similarity dataset.
-    Scores were scaled by factor 10/4.
     """
     data = _get_as_df('EN-RG-65.txt', header=None, sep="\t").values
 
     return Bunch(X=data[:, 0:2].astype("object"),
-                 y=data[:, 2].astype(np.float) * 10.0 / 4.0)
+                 y=data[:, 2].astype(np.float))
 
 def get_RW():
     """
@@ -44,3 +43,36 @@ def get_RW():
     return Bunch(X=data[:, 0:2].astype("object"),
                  y=data[:, 2].astype(np.float),
                  sd=np.std(data[:, 3:].astype(np.float)))
+
+def get_GRU65():
+    """
+    Rubenstein and Goodenough similarity dataset, German version.
+    65 pairs.
+    """
+
+    data = _get_as_df('GRU65.txt', header=None, sep="\t").values
+
+    return Bunch(X=data[:, 0:2].astype("object"),
+                 y=data[:, 2].astype(np.float))
+
+def get_GRU350():
+    """
+    Rubenstein and Goodenough similarity dataset, German version.
+    350 pairs. 
+    """
+
+    data = _get_as_df('GRU350.txt', header=None, sep="\t").values
+
+    return Bunch(X=data[:, 0:2].astype("object"),
+                 y=data[:, 2].astype(np.float))
+
+def get_ZG222():
+    """
+    Zesch and Gurevych similarity dataset, German.
+    222 pairs.
+    """
+
+    data = _get_as_df('ZG222.txt', header=None, sep="\t").values
+
+    return Bunch(X=data[:, 0:2].astype("object"),
+                 y=data[:, 2].astype(np.float))
