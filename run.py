@@ -112,7 +112,7 @@ class MainExec(object):
         if self.args.RESUME:
             print('Resume training...')
             start_epoch = self.args.CKPT_EPOCH
-            path = os.path.join(os.getcwd(),
+            path = os.path.join(os.getcwd(), 'models',
                                 self.model_ver,
                                 'epoch' + str(start_epoch) + '.pkl')
 
@@ -122,7 +122,7 @@ class MainExec(object):
             optimizer.load_state_dict(ckpt['optimizer'])
         else:
             start_epoch = 0
-            os.mkdir(os.path.join(os.getcwd(), self.model_ver))
+            os.mkdir(os.path.join(os.getcwd(), 'models', self.model_ver))
 
         model.train()
         print('Training started ...')
@@ -163,7 +163,7 @@ class MainExec(object):
 
             torch.save(
                 state,
-                os.path.join(os.getcwd(),
+                os.path.join(os.getcwd(), 'models',
                              self.model_ver,
                              'epoch' + str(epoch_finish) + '.pkl')
             )
