@@ -1,4 +1,4 @@
-#About
+# About
 This is a repository containing the final project of the Deep Learning for
 Natural Language Processing course, part of the Cognitive Systems program and
 the Potsdam University. 
@@ -8,7 +8,7 @@ The aim of the project is to reproduce the model and findings used in the
 
 Authors of the project are Bhuvanesh Verma and Tamara Atanasoska.
 
-#Usage
+# Usage
 In order to run the project, it is preferred to create a conda virtual environment. Start
 by installing requirements from ``requirements.txt`` as,
 
@@ -16,7 +16,7 @@ by installing requirements from ``requirements.txt`` as,
 
 This will setup the environment to run project.
 
-##Run
+## Run
 Execute following command :
 
 ``python run.py --RUN_MODE train --SUBSAMPLING --NGRAMS --DATA data/``
