@@ -1,66 +1,73 @@
+import torch
 import numpy as np
+
 from scipy.stats import spearmanr
 from scipy.spatial.distance import cosine as cosine_similarity
-import torch
+
 import eval.sr_datasets as sr_datasets
+
 device = 'cuda' if torch.cuda.is_available() else 'cpu'
 
-def semantic_similarity_datasets(model, vocab_cls):
+def semantic_similarity_datasets(model, vocab_inst):
 
-    #these are the tasks, we have only three
-    #there will be 6 once the german sets are there
-    tasks = {
+    datasets = {
         "WS353": sr_datasets.get_WS353(),
          "RG65": sr_datasets.get_RG65(),
          "RW": sr_datasets.get_RW(),
+         "GRU65": sr_datasets.get_GRU65(),
+         "GRU350": sr_datasets.get_GRU350(),
+         "ZG222": sr_datasets.get_ZG222(),
         }
-    vocab = vocab_cls.get_vocab()
-    spearman_errors = []
-    cosine_errors = []
 
-    for name, data in tasks.items():
-        #now we take one dataset at a time
+    vocab = vocab_inst.get_vocab()
+    
+    #Lists to store all the similarity measurments 
+    spearman_corr_all = []
+    cosine_sim_all = []
+
+    for name, data in datasets.items():
+
         print("Sampling data from ", name)
+
         spearman_err = 0
         cosine_err = 0
-        analogies = 0
+        word_pairs = 0
 
         for i in range(len(data.X)):
-            #we go pair by pair
             word1, word2 = data.X[i][0], data.X[i][1]
-            #look if they are in our vocab. if not, we move on
             if word1 not in vocab or word2 not in vocab:
+                #Only proceed if the words are found in vocab
                 continue
 
-            #lookup_table needs to be substituted with our function 
-            #like we have in the Vocabulary class
-            token1 = torch.LongTensor([vocab_cls.lookup_token(word1)]).to(device)
-            token2 = torch.LongTensor([vocab_cls.lookup_token(word2)]).to(device)
-
+            #Lookup the indices representation of found word
+            token1 = torch.LongTensor([vocab_inst.lookup_token(word1)]).to(device)
+            token2 = torch.LongTensor([vocab_inst.lookup_token(word2)]).to(device)
+            #Look for the indices representation in the embeddings
             vec1 = model.out_embeddings(token1)
             vec2 = model.out_embeddings(token2)
+
+            #Calculate the spearman correlation 
             spearman_corr, _ = spearmanr(vec1, vec2)
-            #spearman correlation found, there is a way to write this shorter
             spearman_corr = abs(spearman_corr)
             spearman_err += abs(spearman_corr - data.y[i] / 10)
 
-            #then we check for cosine similarity of the words too
+            #Calculate cosine similarity
             cosine_sim = 1 - cosine_similarity(vec1, vec2)
             cosine_err += abs(cosine_sim - data.y[i] / 10)
-            #print here just to check accuracy
-            print(word1, word2, data.y[i], cosine_sim)
 
-            #confusing name, here just to check how many pairs we guessed on 
-            analogies += 1
+            word_pairs += 1
 
-        if analogies != 0:
-            spearman_err = 1 - spearman_err / analogies
-            cosine_err = 1 - cosine_err / analogies
-            spearman_errors.append(spearman_err)
-            cosine_errors.append(cosine_err)
-            print("Spearman correlation error on {} dataset: {}".format(name, spearman_err))
-            print("Cosine similarity error on {} dataset: {}".format(name, cosine_err))
+        if word_pairs:
+            spearman_err = 1 - spearman_err / word_pairs
+            cosine_err = 1 - cosine_err / word_pairs
+            spearman_corr_all.append(spearman_err)
+            cosine_sim_all.append(cosine_err)
+
+            print("Word pairs found: {}".format(word_pairs))
+            print("Spearman correlation error: {}".format(spearman_err))
+            print("Cosine similarity errort: {}".format(cosine_err))
         else:
-            print('Word pairs not found')
+            print("No word pairs for {} dataset found in vocab. \
+                   Similarity cannot be reported".format(name))
 
 
