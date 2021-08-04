@@ -19,13 +19,23 @@ This will setup the environment to run project.
 ## Run
 Execute following command :
 
+### Train
 ``python run.py --RUN_MODE train --SUBSAMPLING --NGRAMS --DATA data/``
 
-    --RUN_MODE : {train, eval, test}
-    --SUBSAMPLING : true if provided else false
-    --NGRAMS : true if provided else false
+    --RUN_MODE : {train, val}
+    --SUBSAMPLING : true if provided else false, use subsampling while training
+    --NGRAMS : true if provided else false, use ngrams while training
     --DATA : path to data folder
     other arguments:
     --VERSION : load a specific (saved) model using version number and checkpoint
     --CKPT-E : checkpoint used to load a model or resume training
-    --RESUME : resume training
+    --RESUME : true if provided else false, resume from given epoch
+
+### Resume
+``python run.py --RUN_MODE train --SUBSAMPLING --NGRAMS --DATA data/ --RESUME --VERSION 
+VERSION_NUM --CKPT-E EPOCH_NUM``
+
+### Evaluation
+``python run.py --RUN_MODE val --SUBSAMPLING --NGRAMS --DATA data/ --VERSION 
+VERSION_NUM --CKPT-E EPOCH_NUM``
+
