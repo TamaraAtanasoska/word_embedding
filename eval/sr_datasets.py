@@ -1,3 +1,5 @@
+import os
+
 import numpy as np
 import pandas as pd
 from sklearn.utils import Bunch
@@ -6,7 +8,7 @@ def _get_as_df(name_or_path, **read_csv_kwargs):
     """
     Return the dataset as a pandas dataframe
     """
-    path = 'data/' + name_or_path
+    path = os.getcwd() + '/eval/data/' + name_or_path
     return pd.read_csv(path, **read_csv_kwargs)
 
 

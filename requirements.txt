@@ -4,3 +4,4 @@ tqdm==4.61
 pyyaml==5.4
 torch==1.8
 wandb==0.11
+pandas==1.3
