@@ -1,3 +1,5 @@
+from typing import Any
+
 import nltk
 import numpy as np
 import os, string
@@ -5,6 +7,7 @@ from collections import Counter, defaultdict as dd
 import re, torch
 import torch.nn as nn
 import random
+# from scipy.spatial.distance import cosine as cosine_similarity
 from sklearn.metrics.pairwise import cosine_similarity
 from torch import Tensor
 from torch.utils.data import Dataset
@@ -28,7 +31,41 @@ def preprocess(text: string) -> list:
     return trimmed_words
 
 
-def word_analogy(words: list, embeddings: nn.Embedding, vocab, gram_model=False) -> string:
+def show_learning(model:  Any, vocab: Any, device: Any) -> None:
+    '''
+    This function uses embeddings from the provided model and randomly select some words from vocabulary. Then for each
+    random word, it find similar words using cosine similarity. Finally it prints out top 6 similar words to randonly
+    chosen words.
+    :param model: Trained model
+    :param vocab: vocabulary instance
+    :param device:
+    :return: None
+    '''
+    embeddings = model.in_embeddings
+    embed_vectors = embeddings.weight
+
+    # magnitude of embedding vectors, |b|
+    magnitudes = embed_vectors.pow(2).sum(dim=1).sqrt().unsqueeze(0)
+
+    # pick N words from our ranges (0,window) and (1000,1000+window). lower id implies more frequent
+    valid_examples = np.array(random.sample(range(100), 5 // 2))
+    valid_examples = np.append(valid_examples,
+                               random.sample(range(1000, 1000 + 100), 5 // 2))
+    valid_examples = torch.LongTensor(valid_examples).to(device)
+
+    valid_vectors = embeddings(valid_examples)
+    valid_similarities = torch.mm(valid_vectors, embed_vectors.t()) / magnitudes
+
+    _, closest_idxs = valid_similarities.topk(6)
+
+    valid_examples, closest_idxs = valid_examples.to('cpu'), closest_idxs.to('cpu')
+    for ii, valid_idx in enumerate(valid_examples):
+        closest_words = [vocab.lookup_index(idx.item()) for idx in closest_idxs[ii]][1:]
+        print('Chosen word: '+vocab.lookup_index(valid_idx.item()) + " ----SIMILAR WORDS---- " + ', '.join(closest_words))
+    print("...\n")
+
+
+def word_analogy(words: list, embeddings, vocab, gram_model=False) -> string:
     """
     This function perform word analogy task to test how well word embeddings are trained.
     NOTE:  This function expects given words to be part of vocabulary if gram_model = False i.e if we are not using
@@ -36,7 +73,7 @@ def word_analogy(words: list, embeddings: nn.Embedding, vocab, gram_model=False)
     :param gram_model: Boolean to check if we'll use ngram model or not
     :param vocab: Vocabulary of dataset
     :param words: list of three words such that ### words[0] is to words[1] as words[2] is to ? ###
-    :param embeddings: trained embedding from our model
+    :param embeddings: trained embeddings from model
     :return: target word which fits the analogy best
     """
 
@@ -285,7 +322,7 @@ class Dataset(Dataset):
         self.config = config
         self.loader = Loader(args, config)
         # self.split = {'train': 'train', 'val': 'eval'}
-        self.split = {'train': 'eval'}
+        self.split = {'train': 'train'}
         self.data_dict = dd(dd)
 
         # Based on dataset statistics, not many examples length > 50
@@ -296,6 +333,7 @@ class Dataset(Dataset):
             path = args.DATA + self.split[item]
             self.data_dict[item]['data'], self.data_dict[item]['vocab'] = self.loader.load(path)
             print(str(item) + ' data loaded !')
+            print('Fetching tokens ...')
             self.data_dict[item]['tokens'] = self.get_tokens(item)
             tokens = self.data_dict[item]['tokens']
             print('Preparing ' + str(item) + ' data...')

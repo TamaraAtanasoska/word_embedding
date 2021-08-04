@@ -1,7 +1,6 @@
 import argparse
 import os, random
-import string
-
+from sklearn.metrics.pairwise import cosine_similarity
 import torch
 import wandb
 import yaml
@@ -11,7 +10,7 @@ from model import SkipGram, NegativeSamplingLoss
 from time import sleep
 from torch.optim import Adam
 from torch.utils.data import DataLoader
-
+import eval.evaluation as evaluation
 
 def parse_args():
     """Parse input arguments"""
@@ -98,17 +97,7 @@ class MainExec(object):
         random.seed(self.seed)
 
     def train(self):
-        dataset = utils.Dataset(args, config)
-        data = dataset.get_data(split=args.RUN_MODE)
-        vocab = dataset.get_vocab_cls(split=args.RUN_MODE)
-        ng_dist = utils.get_noise_dist(data)
-        dataloader = utils.DataLoader(dataset, config['BATCH_SIZE'])
 
-        data_size = len(vocab)
-        print(data_size)
-        model = SkipGram(self.cfgs, data_size, ng_dist).to(self.device)
-        loss_func = NegativeSamplingLoss(model, self.cfgs).to(self.device)
-        optimizer = Adam(model.parameters(), lr=self.cfgs['LEARNING_RATE'])
         if self.args.RESUME:
             print('Resume training...')
             start_epoch = self.args.CKPT_EPOCH
@@ -118,11 +107,46 @@ class MainExec(object):
 
             # Load state dict of the model and optimizer
             ckpt = torch.load(path, map_location=self.device)
+            path = os.path.join(os.getcwd(), 'models',
+                             self.model_ver,
+                             'data' + '.pkl')
+            data_pt = torch.load(path)
+            dataset = data_pt['dataset']
+            data = dataset.get_data(split=args.RUN_MODE)
+            vocab = dataset.get_vocab_cls(split=args.RUN_MODE)
+            ng_dist = utils.get_noise_dist(data)
+            dataloader = utils.DataLoader(dataset, config['BATCH_SIZE'])
+            data_size = len(vocab)
+            print(data_size)
+            model = SkipGram(self.cfgs, data_size, ng_dist).to(self.device)
+            loss_func = NegativeSamplingLoss(model, self.cfgs).to(self.device)
+            optimizer = Adam(model.parameters(), lr=self.cfgs['LEARNING_RATE'])
             model.load_state_dict(ckpt['state_dict'])
             optimizer.load_state_dict(ckpt['optimizer'])
         else:
+            dataset = utils.Dataset(args, config)
+            data = dataset.get_data(split=args.RUN_MODE)
+            vocab = dataset.get_vocab_cls(split=args.RUN_MODE)
+            ng_dist = utils.get_noise_dist(data)
+            dataloader = utils.DataLoader(dataset, config['BATCH_SIZE'])
+
+
+            data_size = len(vocab)
+            print('Total data instances: ',data_size)
+            model = SkipGram(self.cfgs, data_size, ng_dist).to(self.device)
+            loss_func = NegativeSamplingLoss(model, self.cfgs).to(self.device)
+            optimizer = Adam(model.parameters(), lr=self.cfgs['LEARNING_RATE'])
             start_epoch = 0
             os.mkdir(os.path.join(os.getcwd(), 'models', self.model_ver))
+            static_state = {
+                'dataset': dataset
+            }
+            torch.save(
+                static_state,
+                os.path.join(os.getcwd(), 'models',
+                             self.model_ver,
+                             'data' + '.pkl')
+            )
 
         model.train()
         print('Training started ...')
@@ -148,17 +172,15 @@ class MainExec(object):
 
                     tepoch.set_postfix(loss=loss.item())
                     sleep(0.1)
-                    '''if step % 1000 == 0:
-                        print("Epoch: {}/{}".format(epoch + 1, self.cfgs['EPOCHS']))
-                        print("Loss: ", loss.item())  # avg batch loss at this point in training'''
 
-            # print('epoch {}, loss {}'.format(epoch, loss_sum/data_size))
+            utils.show_learning(model, vocab, self.device)
             wandb.log({'batch_loss': loss_sum, 'loss': (loss_sum / data_size)})
             epoch_finish = epoch + 1
             # Save checkpoint
             state = {
                 'state_dict': model.state_dict(),
-                'optimizer': optimizer.state_dict()
+                'optimizer': optimizer.state_dict(),
+                'embeds':model.in_embeddings
             }
 
             torch.save(
@@ -168,14 +190,34 @@ class MainExec(object):
                              'epoch' + str(epoch_finish) + '.pkl')
             )
 
-    def eval(self):
-        #   TODO:
-        #    1. Read question-words.txt
-        #    2. Process data to be given as input to word_analogy function.
-        #    3. Calculate Accuracy and add metric to WandB.
-        #    4. Implement Hyper-parameter tuning
 
-        pass
+
+    def eval(self, vocab_ins = None, embeds = None):
+        if self.args.RUN_MODE == 'val':
+            if self.args.CKPT_EPOCH is not None:
+                path = os.path.join(os.getcwd(),'models',
+                                    self.model_ver,
+                                    'epoch' + str(self.args.CKPT_EPOCH) + '.pkl')
+                # Load state dict of the model
+                ckpt = torch.load(path, map_location=self.device)
+                embeddings = ckpt['embeds']
+
+                path = os.path.join(os.getcwd(), 'models',
+                                         self.model_ver,
+                                         'data' + '.pkl')
+                data_pt = torch.load(path)
+                dataset = data_pt['dataset']
+                vocab = dataset.get_vocab_cls(split='train')
+                print(vocab.get_vocab()[:10])
+            else:
+                print('CHECKPOINT not provided')
+                exit(-1)
+        else:
+            vocab = vocab_ins
+            embeddings = embeds
+        evaluation.semantic_similarity_datasets(embeddings, vocab)
+
+
 
     def overfit(self):
         dataset = utils.Dataset(args, config)
