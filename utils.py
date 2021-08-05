@@ -25,9 +25,24 @@ def preprocess(text: string) -> list:
     :param text: [string] sequence of string
     :return: [list] list of words in raw data
     """
+    # Replace punctuation with tokens so we can use them in our model
+    text = text.lower()
+    text = text.replace('.', ' <PERIOD> ')
+    text = text.replace(',', ' <COMMA> ')
+    text = text.replace('"', ' <QUOTATION_MARK> ')
+    text = text.replace(';', ' <SEMICOLON> ')
+    text = text.replace('!', ' <EXCLAMATION_MARK> ')
+    text = text.replace('?', ' <QUESTION_MARK> ')
+    text = text.replace('(', ' <LEFT_PAREN> ')
+    text = text.replace(')', ' <RIGHT_PAREN> ')
+    text = text.replace('--', ' <HYPHENS> ')
+    text = text.replace('?', ' <QUESTION_MARK> ')
+    text = text.replace('\n', ' <NEW_LINE> ')
+    text = text.replace(':', ' <COLON> ')
+
     words = text.split()
     word_counts = Counter(words)
-    trimmed_words = [word + '</w>' for word in words if word_counts[word] > 5]
+    trimmed_words = [word.lower() + '</w>' for word in words if word_counts[word] > 5]
     return trimmed_words
 
 
@@ -46,12 +61,14 @@ def show_learning(model:  Any, vocab: Any, device: Any) -> None:
 
     # magnitude of embedding vectors, |b|
     magnitudes = embed_vectors.pow(2).sum(dim=1).sqrt().unsqueeze(0)
-
+    word_vocab = list(vocab.get_word_vocab())
+    total = len(word_vocab)
     # pick N words from our ranges (0,window) and (1000,1000+window). lower id implies more frequent
     valid_examples = np.array(random.sample(range(100), 5 // 2))
     valid_examples = np.append(valid_examples,
-                               random.sample(range(1000, 1000 + 100), 5 // 2))
+                               random.sample(range(total-100, total), 5 // 2))
     valid_examples = torch.LongTensor(valid_examples).to(device)
+    valid_examples = torch.LongTensor([vocab.lookup_token(word_vocab[ex.item()]) for ex in valid_examples]).to(device)
 
     valid_vectors = embeddings(valid_examples)
     valid_similarities = torch.mm(valid_vectors, embed_vectors.t()) / magnitudes
@@ -76,8 +93,19 @@ def word_analogy(words: list, embeddings, vocab, gram_model=False) -> string:
     :param embeddings: trained embeddings from model
     :return: target word which fits the analogy best
     """
+    words = [word.lower() + '</w>' for word in words]
 
-    maximum_similarity = -99999
+    embed_vectors = embeddings.weight
+    tokens = torch.LongTensor([vocab.lookup_token(ex) for ex in words]).to(device)
+    vectors = embeddings(tokens)
+    inp1 = (vectors[1] - vectors[0] + vectors[2])
+    inp2 = embed_vectors
+    magnitudes = inp2.pow(2).sum(dim=1).sqrt().unsqueeze(0) * inp1.pow(2).sum(dim=0).sqrt().unsqueeze(0)
+    similarities = torch.mm(inp1.unsqueeze(0), inp2.t()) / magnitudes
+    _, idx = similarities.topk(1)
+    target = vocab.lookup_index(idx.squeeze().item())
+    '''maximum_similarity = -99999
+    
     target = None
     vectors = []
     if gram_model:
@@ -97,19 +125,19 @@ def word_analogy(words: list, embeddings, vocab, gram_model=False) -> string:
             word_idx = torch.LongTensor([word_idx]).to(device)
             vectors.append(embeddings(word_idx))
 
-    for word in vocab.get_vocab():
+    for word in list(vocab.get_word_vocab()):
         if word in words:
             continue
         word_idx = vocab.lookup_token(word)
         word_idx = torch.LongTensor([word_idx]).to(device)
-        wvec = embeddings(word_idx)
-        diff1 = vectors[1] - vectors[0]
-        diff2 = wvec - vectors[2]
+        wvec = embeddings(word_idx).detach().cpu().numpy()
+        diff1 = vectors[1].detach().cpu().numpy() - vectors[0].detach().cpu().numpy()
+        diff2 = wvec - vectors[2].detach().cpu().numpy()
         similarity = cosine_similarity(diff1, diff2)
 
         if similarity > maximum_similarity:
             maximum_similarity = similarity
-            target = word
+            target = word'''
 
     return target
 
@@ -322,7 +350,7 @@ class Dataset(Dataset):
         self.config = config
         self.loader = Loader(args, config)
         # self.split = {'train': 'train', 'val': 'eval'}
-        self.split = {'train': 'train'}
+        self.split = {'train': 'tiny_eval'}
         self.data_dict = dd(dd)
 
         # Based on dataset statistics, not many examples length > 50
@@ -330,7 +358,7 @@ class Dataset(Dataset):
         print('Loading datasets...')
 
         for item in self.split:
-            path = args.DATA + self.split[item]
+            path = args.DATA
             self.data_dict[item]['data'], self.data_dict[item]['vocab'] = self.loader.load(path)
             print(str(item) + ' data loaded !')
             print('Fetching tokens ...')

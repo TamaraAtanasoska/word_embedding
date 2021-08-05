@@ -1,0 +1,31 @@
+program: tune_hp.py
+method: bayes
+entity: we
+project: hpt
+command:
+  - ${env}
+  - ${interpreter}
+  - ${program}
+  - ${args}
+metric:
+  name: loss
+  goal: minimize
+parameters:
+  LEARNING_RATE:
+    min: 0.0001
+    max: 0.1
+  BATCH_SIZE:
+    min: 64
+    max: 512
+  EMBEDDING_DIM:
+    min: 200
+    max: 300
+  WINDOW_SIZE:
+    min: 1
+    max: 5
+  NUM_MERGES:
+    min: 30
+    max: 70
+  EPOCHS:
+    min: 50
+    max: 500
