@@ -1,3 +1,5 @@
+from typing import Any
+
 import nltk
 import numpy as np
 import os, string
@@ -5,6 +7,7 @@ from collections import Counter, defaultdict as dd
 import re, torch
 import torch.nn as nn
 import random
+# from scipy.spatial.distance import cosine as cosine_similarity
 from sklearn.metrics.pairwise import cosine_similarity
 from torch import Tensor
 from torch.utils.data import Dataset
@@ -22,13 +25,58 @@ def preprocess(text: string) -> list:
     :param text: [string] sequence of string
     :return: [list] list of words in raw data
     """
+    # Replace punctuation with tokens so we can use them in our model
+    text = text.lower()
+    text = text.replace('.', ' <PERIOD> ')
+    text = text.replace(',', ' <COMMA> ')
+    text = text.replace('"', ' <QUOTATION_MARK> ')
+    text = text.replace(';', ' <SEMICOLON> ')
+    text = text.replace('!', ' <EXCLAMATION_MARK> ')
+    text = text.replace('?', ' <QUESTION_MARK> ')
+    text = text.replace('(', ' <LEFT_PAREN> ')
+    text = text.replace(')', ' <RIGHT_PAREN> ')
+    text = text.replace('--', ' <HYPHENS> ')
+    text = text.replace('?', ' <QUESTION_MARK> ')
+    text = text.replace('\n', ' <NEW_LINE> ')
+    text = text.replace(':', ' <COLON> ')
+
     words = text.split()
     word_counts = Counter(words)
-    trimmed_words = [word + '</w>' for word in words if word_counts[word] > 5]
+    trimmed_words = [word.lower() + '</w>' for word in words if word_counts[word] > 5]
     return trimmed_words
 
+def show_learning(embeddings:  Any, vocab: Any, device: Any) -> None:
+    '''
+    This function uses embeddings from the provided model and randomly select some words from vocabulary. Then for each
+    random word, it find similar words using cosine similarity. Finally it prints out top 6 similar words to randonly
+    chosen words.
+    :param model: Trained model
+    :param vocab: vocabulary instance
+    :param device:
+    :return: None
+    '''
 
-def word_analogy(words: list, embeddings: nn.Embedding, vocab, gram_model=False) -> string:
+    embed_vectors = embeddings.weight
+
+    word_vocab = list(vocab.get_word_vocab())
+    total = len(word_vocab)
+    idxs = random.sample(range(total), 5)
+    words = [ word_vocab[idx] for idx in idxs]
+    valid_examples = torch.LongTensor([vocab.lookup_token(word) for word in words]).to(device)
+    valid_vectors = embeddings(valid_examples)
+
+    magnitudes = embed_vectors.pow(2).sum(dim=1).sqrt().unsqueeze(0)
+    valid_similarities = torch.mm(valid_vectors, embed_vectors.t()) / magnitudes
+    _, closest_idxs = valid_similarities.topk(6)
+
+    valid_examples, closest_idxs = valid_examples.to('cpu'), closest_idxs.to('cpu')
+    for ii, valid_idx in enumerate(valid_examples):
+        closest_words = [vocab.lookup_index(idx.item()) for idx in closest_idxs[ii]][1:]
+        print('Chosen word: '+vocab.lookup_index(valid_idx.item()) + " ----SIMILAR WORDS---- " + ', '.join(closest_words))
+    print("...\n")
+
+
+def word_analogy(words: list, embeddings, vocab, gram_model=False) -> string:
     """
     This function perform word analogy task to test how well word embeddings are trained.
     NOTE:  This function expects given words to be part of vocabulary if gram_model = False i.e if we are not using
@@ -36,11 +84,25 @@ def word_analogy(words: list, embeddings: nn.Embedding, vocab, gram_model=False)
     :param gram_model: Boolean to check if we'll use ngram model or not
     :param vocab: Vocabulary of dataset
     :param words: list of three words such that ### words[0] is to words[1] as words[2] is to ? ###
-    :param embeddings: trained embedding from our model
+    :param embeddings: trained embeddings from model
     :return: target word which fits the analogy best
     """
+    words = [word.lower() + '</w>' for word in words]
+    print(words)
+    embed_vectors = embeddings.weight
+    tokens = torch.LongTensor([vocab.lookup_token(ex) for ex in words]).to(device)
+    vectors = embeddings(tokens)
+    inp1 = (vectors[1] - vectors[0])
+    inp2 = embed_vectors - vectors[2]
+    magnitudes = inp2.pow(2).sum(dim=1).sqrt().unsqueeze(0) * inp1.pow(2).sum(dim=0).sqrt().unsqueeze(0)
+    similarities = torch.mm(inp1.unsqueeze(0), inp2.t()) / magnitudes
+    val, idxs = similarities.topk(50)
+    for id, v in zip(idxs.squeeze(), val.squeeze()):
+        print(vocab.lookup_index(id.item()), v)
 
-    maximum_similarity = -99999
+    #target = vocab.lookup_index(idxs[0][0].item())
+    '''maximum_similarity = -99999
+    
     target = None
     vectors = []
     if gram_model:
@@ -60,19 +122,19 @@ def word_analogy(words: list, embeddings: nn.Embedding, vocab, gram_model=False)
             word_idx = torch.LongTensor([word_idx]).to(device)
             vectors.append(embeddings(word_idx))
 
-    for word in vocab.get_vocab():
+    for word in list(vocab.get_word_vocab()):
         if word in words:
             continue
         word_idx = vocab.lookup_token(word)
         word_idx = torch.LongTensor([word_idx]).to(device)
-        wvec = embeddings(word_idx)
-        diff1 = vectors[1] - vectors[0]
-        diff2 = wvec - vectors[2]
+        wvec = embeddings(word_idx).detach().cpu().numpy()
+        diff1 = vectors[1].detach().cpu().numpy() - vectors[0].detach().cpu().numpy()
+        diff2 = wvec - vectors[2].detach().cpu().numpy()
         similarity = cosine_similarity(diff1, diff2)
 
         if similarity > maximum_similarity:
             maximum_similarity = similarity
-            target = word
+            target = word'''
 
     return target
 
@@ -285,7 +347,7 @@ class Dataset(Dataset):
         self.config = config
         self.loader = Loader(args, config)
         # self.split = {'train': 'train', 'val': 'eval'}
-        self.split = {'train': 'eval'}
+        self.split = {'train': 'tiny_eval'}
         self.data_dict = dd(dd)
 
         # Based on dataset statistics, not many examples length > 50
@@ -293,9 +355,10 @@ class Dataset(Dataset):
         print('Loading datasets...')
 
         for item in self.split:
-            path = args.DATA + self.split[item]
+            path = args.DATA
             self.data_dict[item]['data'], self.data_dict[item]['vocab'] = self.loader.load(path)
             print(str(item) + ' data loaded !')
+            print('Fetching tokens ...')
             self.data_dict[item]['tokens'] = self.get_tokens(item)
             tokens = self.data_dict[item]['tokens']
             print('Preparing ' + str(item) + ' data...')

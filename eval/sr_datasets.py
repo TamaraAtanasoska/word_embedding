@@ -3,6 +3,8 @@ import os
 import numpy as np
 import pandas as pd
 from sklearn.utils import Bunch
+from collections import defaultdict as dd
+
 
 def _get_as_df(name_or_path, **read_csv_kwargs):
     """
@@ -18,13 +20,14 @@ def get_WS353():
     folder but not currently used.
     """
 
-    data = _get_as_df('WS353/wordsim_similarity_goldstandard.txt', 
-                       header=0, 
-                       sep="\t",
+    data = _get_as_df('WS353/wordsim_similarity_goldstandard.txt',
+                      header=0,
+                      sep="\t",
                       ).values
-    
-    return Bunch(X=data[:, 0:2].astype("object"), 
+
+    return Bunch(X=data[:, 0:2].astype("object"),
                  y=data[:, 2].astype(np.float))
+
 
 def get_RG65():
     """
@@ -34,6 +37,7 @@ def get_RG65():
 
     return Bunch(X=data[:, 0:2].astype("object"),
                  y=data[:, 2].astype(np.float))
+
 
 def get_RW():
     """
@@ -46,6 +50,7 @@ def get_RW():
                  y=data[:, 2].astype(np.float),
                  sd=np.std(data[:, 3:].astype(np.float)))
 
+
 def get_GRU65():
     """
     Rubenstein and Goodenough similarity dataset, German version.
@@ -56,6 +61,7 @@ def get_GRU65():
 
     return Bunch(X=data[:, 0:2].astype("object"),
                  y=data[:, 2].astype(np.float))
+
 
 def get_GRU350():
     """
@@ -68,6 +74,7 @@ def get_GRU350():
     return Bunch(X=data[:, 0:2].astype("object"),
                  y=data[:, 2].astype(np.float))
 
+
 def get_ZG222():
     """
     Zesch and Gurevych similarity dataset, German.
@@ -78,3 +85,21 @@ def get_ZG222():
 
     return Bunch(X=data[:, 0:2].astype("object"),
                  y=data[:, 2].astype(np.float))
+
+
+def get_google_analogy(filename) -> dict:
+    """
+    Google word analogy dataset
+    :return: dictionary of different categories of data with list of data instances
+    """
+    path = os.getcwd() + '/eval/data/' + filename +'.txt'
+    line_data = open(path).read()
+    datalist = line_data.split('\n')
+    data = dd(list)
+    for line in datalist:
+        if line.startswith(':'):
+            key = line[2:]
+            data[key] = []
+        else:
+            data[key].append(line.split())
+    return data
