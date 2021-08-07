@@ -45,8 +45,7 @@ def preprocess(text: string) -> list:
     trimmed_words = [word.lower() + '</w>' for word in words if word_counts[word] > 5]
     return trimmed_words
 
-
-def show_learning(model:  Any, vocab: Any, device: Any) -> None:
+def show_learning(embeddings:  Any, vocab: Any, device: Any) -> None:
     '''
     This function uses embeddings from the provided model and randomly select some words from vocabulary. Then for each
     random word, it find similar words using cosine similarity. Finally it prints out top 6 similar words to randonly
@@ -56,23 +55,18 @@ def show_learning(model:  Any, vocab: Any, device: Any) -> None:
     :param device:
     :return: None
     '''
-    embeddings = model.in_embeddings
+
     embed_vectors = embeddings.weight
 
-    # magnitude of embedding vectors, |b|
-    magnitudes = embed_vectors.pow(2).sum(dim=1).sqrt().unsqueeze(0)
     word_vocab = list(vocab.get_word_vocab())
     total = len(word_vocab)
-    # pick N words from our ranges (0,window) and (1000,1000+window). lower id implies more frequent
-    valid_examples = np.array(random.sample(range(100), 5 // 2))
-    valid_examples = np.append(valid_examples,
-                               random.sample(range(total-100, total), 5 // 2))
-    valid_examples = torch.LongTensor(valid_examples).to(device)
-    valid_examples = torch.LongTensor([vocab.lookup_token(word_vocab[ex.item()]) for ex in valid_examples]).to(device)
-
+    idxs = random.sample(range(total), 5)
+    words = [ word_vocab[idx] for idx in idxs]
+    valid_examples = torch.LongTensor([vocab.lookup_token(word) for word in words]).to(device)
     valid_vectors = embeddings(valid_examples)
-    valid_similarities = torch.mm(valid_vectors, embed_vectors.t()) / magnitudes
 
+    magnitudes = embed_vectors.pow(2).sum(dim=1).sqrt().unsqueeze(0)
+    valid_similarities = torch.mm(valid_vectors, embed_vectors.t()) / magnitudes
     _, closest_idxs = valid_similarities.topk(6)
 
     valid_examples, closest_idxs = valid_examples.to('cpu'), closest_idxs.to('cpu')
@@ -94,16 +88,19 @@ def word_analogy(words: list, embeddings, vocab, gram_model=False) -> string:
     :return: target word which fits the analogy best
     """
     words = [word.lower() + '</w>' for word in words]
-
+    print(words)
     embed_vectors = embeddings.weight
     tokens = torch.LongTensor([vocab.lookup_token(ex) for ex in words]).to(device)
     vectors = embeddings(tokens)
-    inp1 = (vectors[1] - vectors[0] + vectors[2])
-    inp2 = embed_vectors
+    inp1 = (vectors[1] - vectors[0])
+    inp2 = embed_vectors - vectors[2]
     magnitudes = inp2.pow(2).sum(dim=1).sqrt().unsqueeze(0) * inp1.pow(2).sum(dim=0).sqrt().unsqueeze(0)
     similarities = torch.mm(inp1.unsqueeze(0), inp2.t()) / magnitudes
-    _, idx = similarities.topk(1)
-    target = vocab.lookup_index(idx.squeeze().item())
+    val, idxs = similarities.topk(50)
+    for id, v in zip(idxs.squeeze(), val.squeeze()):
+        print(vocab.lookup_index(id.item()), v)
+
+    #target = vocab.lookup_index(idxs[0][0].item())
     '''maximum_similarity = -99999
     
     target = None

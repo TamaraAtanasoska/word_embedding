@@ -87,12 +87,12 @@ def get_ZG222():
                  y=data[:, 2].astype(np.float))
 
 
-def get_google_analogy() -> dict:
+def get_google_analogy(filename) -> dict:
     """
     Google word analogy dataset
     :return: dictionary of different categories of data with list of data instances
     """
-    path = os.getcwd() + '/eval/data/EN-GOOGLE.txt'
+    path = os.getcwd() + '/eval/data/' + filename +'.txt'
     line_data = open(path).read()
     datalist = line_data.split('\n')
     data = dd(list)
