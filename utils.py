@@ -359,7 +359,7 @@ class Dataset(Dataset):
             self.data_dict[item]['data'], self.data_dict[item]['vocab'] = self.loader.load(path)
             print(str(item) + ' data loaded !')
             print('Fetching tokens ...')
-            self.data_dict[item]['tokens'] = self.get_tokens(item)
+            self.data_dict[item]['tokens'] = self.create_tokens(item)
             tokens = self.data_dict[item]['tokens']
             print('Preparing ' + str(item) + ' data...')
             ngram_idx = self.get_ngram_token(item) if args.NGRAMS else None
@@ -393,6 +393,13 @@ class Dataset(Dataset):
         target_words = tokens[start:idx] + tokens[idx + 1:stop + 1]
         return list(target_words)
 
+    def get_tokens(self, split) -> list:
+        '''
+        :param split: [string] (train,val,test)
+        :return: [list] list of words for given split
+        '''
+        return self.data_dict[split]['tokens']
+
     def get_data(self, split: string) -> list:
         '''
         :param split: [string] (train,val,test)
@@ -408,7 +415,7 @@ class Dataset(Dataset):
         '''
         return self.data_dict[split]['vocab']
 
-    def get_tokens(self, split: string) -> list:
+    def create_tokens(self, split: string) -> list:
         '''
         This function converts words from given split data into indices from vocabulary
         :param split: [string] (train,val,test)

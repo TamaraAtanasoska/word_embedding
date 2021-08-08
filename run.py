@@ -100,13 +100,14 @@ class MainExec(object):
 
     def train(self):
         dataset = utils.Dataset(self.args, self.cfgs)
-        data = dataset.get_data(split=self.args.RUN_MODE)
-        vocab = dataset.get_vocab_cls(split=self.args.RUN_MODE)
-        ng_dist = utils.get_noise_dist(data)
-        dataloader = utils.DataLoader(dataset, self.cfgs['BATCH_SIZE'])
-        data_size = len(vocab)
+        tokens = dataset.get_tokens('train')
+        vocab = dataset.get_vocab_cls()
+        vocab_size = len(vocab)
+        ng_dist = utils.get_noise_dist(tokens)
+        dataloader = utils.DataLoader(dataset, self.cfgs)
+        data_size = len(tokens)
         print('Total data instances: ', data_size)
-        model = SkipGram(self.cfgs, data_size, ng_dist).to(self.device)
+        model = SkipGram(self.cfgs, vocab_size, ng_dist).to(self.device)
         loss_func = NegativeSamplingLoss(model, self.cfgs).to(self.device)
         optimizer = Adam(model.parameters(), lr=self.cfgs['LEARNING_RATE'])
 
