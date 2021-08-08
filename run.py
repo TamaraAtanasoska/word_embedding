@@ -99,8 +99,9 @@ class MainExec(object):
         random.seed(self.seed)
 
     def train(self):
+        wandb.init(entity='we', project='test')
         dataset = utils.Dataset(self.args, self.cfgs)
-        tokens = dataset.get_tokens('train')
+        tokens = dataset.get_tokens()
         vocab = dataset.get_vocab_cls()
         vocab_size = len(vocab)
         ng_dist = utils.get_noise_dist(tokens)
@@ -126,7 +127,7 @@ class MainExec(object):
         else:
 
             start_epoch = 0
-            os.mkdir(os.path.join(os.getcwd(), 'models', self.model_ver))
+            os.mkdir(os.path.join(os.getcwd(), 'models', 'test', self.model_ver))
 
         model.train()
         print('Training started ...')
@@ -138,8 +139,9 @@ class MainExec(object):
                         input_words, target_words
                 ) in enumerate(tepoch):
                     # for input_words, target_words in dataloader.get_batches():
+                    #print(input_words, target_words)
                     tepoch.set_description("Epoch {}".format(str(epoch)))
-                    # inputs, targets = torch.LongTensor(input_words).to(self.device),torch.LongTensor(target_words).to(self.device)
+                    #inputs, targets = torch.LongTensor(input_words).to(self.device),torch.LongTensor(target_words).to(self.device)
 
                     # Input contains list of different length, therefore cannot be converted into LongTensor at this point
 
@@ -154,9 +156,11 @@ class MainExec(object):
                     tepoch.set_postfix(loss=loss.item())
                     sleep(0.1)
 
-            utils.show_learning(model, vocab, self.device)
+            utils.show_learning(model.in_embeddings, vocab, self.device)
             self.loss = loss_sum/data_size
             self.batch_loss = loss_sum
+
+
             wandb.log({'batch_loss': self.batch_loss, 'loss': self.loss})
             if epoch % print_every == 0:
                 self.eval(vocab, model.out_embeddings)
@@ -165,13 +169,13 @@ class MainExec(object):
             state = {
                 'state_dict': model.state_dict(),
                 'optimizer': optimizer.state_dict(),
-                'embeds':model.in_embeddings,
+                'embeds':model.out_embeddings,
                 'vocab':vocab
             }
 
             torch.save(
                 state,
-                os.path.join(os.getcwd(), 'models',
+                os.path.join(os.getcwd(), 'models','test',
                              self.model_ver,
                              'epoch' + str(epoch_finish) + '.pkl')
             )
@@ -181,20 +185,20 @@ class MainExec(object):
     def eval(self, vocab_ins = None, embeds = None):
         if self.args.RUN_MODE == 'val':
             if self.args.CKPT_EPOCH is not None:
-                path = os.path.join(os.getcwd(),'models',
+                path = os.path.join(os.getcwd(),'models', 'test',
                                     self.model_ver,
                                     'epoch' + str(self.args.CKPT_EPOCH) + '.pkl')
                 # Load state dict of the model
                 ckpt = torch.load(path, map_location=self.device)
                 embeddings = ckpt['embeds']
                 vocab = ckpt['vocab']
-                print(vocab.get_vocab()[:10])
             else:
                 print('CHECKPOINT not provided')
                 exit(-1)
         else:
             vocab = vocab_ins
             embeddings = embeds
+        #utils.show_learning(embeddings, vocab, self.device)
         evaluation.semantic_similarity_datasets(embeddings, vocab)
 
 
@@ -240,9 +244,10 @@ class MainExec(object):
 
 if __name__ == "__main__":
     args = parse_args()
-    wandb.init(project='word_embeddings', entity='we')
+
     with open('./config.yml', 'r') as f:
         config = yaml.safe_load(f)
 
     exec = MainExec(args, config)
     exec.run(args.RUN_MODE)
+
