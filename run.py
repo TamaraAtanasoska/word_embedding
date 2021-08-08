@@ -244,5 +244,5 @@ if __name__ == "__main__":
     with open('./config.yml', 'r') as f:
         config = yaml.safe_load(f)
 
-    exec = MainExec(args, config)
-    exec.run(args.RUN_MODE)
+    m_exec = MainExec(args, config)
+    m_exec.run(args.RUN_MODE)
