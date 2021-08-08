@@ -62,8 +62,8 @@ class NegativeSamplingLoss(nn.Module):
         updated_batch_size = in_embed.shape[0]
         ng_embed = self.skipgram.forward_neg(updated_batch_size).neg()
         #print((in_embed.dtype), out_embed.dtype)
-        out_loss = torch.bmm(in_embed, out_embed).squeeze().sigmoid().log()
+        out_loss = torch.bmm(out_embed, in_embed).squeeze().sigmoid().log()
         neg_loss = torch.bmm(ng_embed, in_embed).squeeze().sigmoid().log().sum(1)
-        neg_samp_loss = -(out_loss.T + neg_loss).mean()
+        neg_samp_loss = -(out_loss + neg_loss).mean()
 
         return neg_samp_loss
