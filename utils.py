@@ -18,7 +18,6 @@ with open('./config.yml', 'r') as f:
 
 device = 'cuda' if torch.cuda.is_available() else 'cpu'
 
-
 def preprocess(text: string) -> list:
     """
     This function converts raw text data into words and remove words with frequency less than 5
@@ -88,54 +87,18 @@ def word_analogy(words: list, embeddings, vocab, gram_model=False) -> string:
     :return: target word which fits the analogy best
     """
     words = [word.lower() + '</w>' for word in words]
-    print(words)
     embed_vectors = embeddings.weight
     tokens = torch.LongTensor([vocab.lookup_token(ex) for ex in words]).to(device)
     vectors = embeddings(tokens)
-    inp1 = (vectors[1] - vectors[0])
-    inp2 = embed_vectors - vectors[2]
+    inp1 = (vectors[1] - vectors[0]) + vectors[2]
+    inp2 = embed_vectors
     magnitudes = inp2.pow(2).sum(dim=1).sqrt().unsqueeze(0) * inp1.pow(2).sum(dim=0).sqrt().unsqueeze(0)
     similarities = torch.mm(inp1.unsqueeze(0), inp2.t()) / magnitudes
-    val, idxs = similarities.topk(50)
+    val, idxs = similarities.topk(5)
     for id, v in zip(idxs.squeeze(), val.squeeze()):
-        print(vocab.lookup_index(id.item()), v)
+        print(vocab.lookup_index(id.item()), v.item())
 
-    #target = vocab.lookup_index(idxs[0][0].item())
-    '''maximum_similarity = -99999
-    
-    target = None
-    vectors = []
-    if gram_model:
-        words = vocab.lookup_ngram(words)
-        for i, word in enumerate(words):
-            ngrams = word.split(' ')
-            ngrams_idx = [vocab.lookup_token(ngram) for ngram in ngrams]
-            ngrams_idx = torch.LongTensor(ngrams_idx).to(device)
-            vectors.append(sum(embeddings(ngrams_idx)))
-            if word in vocab.get_vocab():
-                word_idx = vocab.lookup_token(word)
-                word_idx = torch.LongTensor([word_idx]).to(device)
-                vectors[i] = vectors[i] + embeddings(word_idx)
-    else:
-        for word in words:
-            word_idx = vocab.lookup_token(word)
-            word_idx = torch.LongTensor([word_idx]).to(device)
-            vectors.append(embeddings(word_idx))
-
-    for word in list(vocab.get_word_vocab()):
-        if word in words:
-            continue
-        word_idx = vocab.lookup_token(word)
-        word_idx = torch.LongTensor([word_idx]).to(device)
-        wvec = embeddings(word_idx).detach().cpu().numpy()
-        diff1 = vectors[1].detach().cpu().numpy() - vectors[0].detach().cpu().numpy()
-        diff2 = wvec - vectors[2].detach().cpu().numpy()
-        similarity = cosine_similarity(diff1, diff2)
-
-        if similarity > maximum_similarity:
-            maximum_similarity = similarity
-            target = word'''
-
+    target = vocab.lookup_index(idxs[0][0].item())
     return target
 
 
@@ -152,7 +115,7 @@ def sub_sampling(tokens: list, threshold=1e-5) -> list:
     total_words = len(tokens)
     word_freq = {word: count / total_words for word, count in words_count.items()}
     word_prob = {word: 1 - np.sqrt(threshold / word_freq[word]) for word in words_count}  # Proposed Probability
-    sampled_vocab = [word for word in tokens if random.random() < (1- word_prob[word])]
+    sampled_vocab = [word for word in tokens if random.random() < (1 - word_prob[word])]
     return sampled_vocab
 
 
@@ -211,7 +174,7 @@ def get_pairs(vocab: dict) -> dict:
 
 
 class Vocabulary(object):
-    def __init__(self, cnfig, token_to_idx=None):
+    def __init__(self, cnfig, token_to_idx=None, NGRAMS = False):
 
         self.config = cnfig
         if token_to_idx is None:
@@ -220,6 +183,7 @@ class Vocabulary(object):
         self._idx_to_token = {idx: token for token, idx in self._token_to_idx.items()}
         self._ngram_vocab = None
         self._word_vocab = None
+        self.NGRAMS = NGRAMS
 
     def to_serializable(self):
         return {'token_to_idx': self._token_to_idx}
@@ -246,27 +210,36 @@ class Vocabulary(object):
         :param words: list of words to create vocabulary from
         :return: None
         '''
-        tokens = [" ".join(word) for word in words]  # space seperated words
-        vocab = Counter(tokens)
-        for i in range(self.config['NUM_MERGES']):
-            pairs = get_pairs(vocab)
-            if not pairs:
-                break
-            best = max(pairs, key=pairs.get)
-            vocab = merge_vocab(best, vocab)
-        tokens = list(vocab.keys())
-        vocab = list(string.ascii_lowercase)
-        for token in tokens:
-            vocab += token.split()
-        vocab = set(vocab)  # ngrams from BPE algorithm
-        word_in_ngram = set(
-            [word for word in words if word in vocab])  # full words in ngram vocab
-        whole_words = set(words) ^ (word_in_ngram)  # words not in ngram vocab
-        # aplbhabets =
-        self._ngram_vocab = list(set(vocab) ^ set(word_in_ngram))
-        self._word_vocab = set(words)
-        self._idx_to_token = {ii: word for ii, word in enumerate(list(vocab) + list(whole_words))}
-        self._token_to_idx = {word: ii for ii, word in self._idx_to_token.items()}
+        if self.NGRAMS:
+            tokens = [" ".join(word) for word in words]  # space seperated words
+            vocab = Counter(tokens)
+            for i in range(self.config['NUM_MERGES']):
+                pairs = get_pairs(vocab)
+                if not pairs:
+                    break
+                best = max(pairs, key=pairs.get)
+                vocab = merge_vocab(best, vocab)
+            tokens = list(vocab.keys())
+            vocab = list(string.ascii_lowercase)
+            for token in tokens:
+                vocab += token.split()
+            vocab = set(vocab)  # ngrams from BPE algorithm
+            word_in_ngram = set(
+                [word for word in words if word in vocab])  # full words in ngram vocab
+            whole_words = set(words) ^ (word_in_ngram)  # words not in ngram vocab
+            # aplbhabets =
+            self._ngram_vocab = list(set(vocab) ^ set(word_in_ngram))
+            self._word_vocab = set(words)
+            self._idx_to_token = {ii: word for ii, word in enumerate(list(vocab) + list(whole_words))}
+            self._token_to_idx = {word: ii for ii, word in self._idx_to_token.items()}
+        else:
+            word_counts = Counter(words)
+            # sorting the words from most to least frequent in text occurrence
+            sorted_vocab = sorted(word_counts, key=word_counts.get, reverse=True)
+            # create int_to_vocab dictionaries
+            self._idx_to_token = {ii: word for ii, word in enumerate(sorted_vocab)}
+            self._token_to_idx = {word: ii for ii, word in self._idx_to_token.items()}
+            self._word_vocab = list(self._token_to_idx.keys())
 
     def lookup_index(self, index: int) -> string:
         if index not in self._idx_to_token:
@@ -320,7 +293,6 @@ class Vocabulary(object):
     def __len__(self):
         return len(self._token_to_idx)
 
-
 class Loader(object):
     def __init__(self, args, cnfg):
         self.args = args
@@ -346,83 +318,38 @@ class Dataset(Dataset):
         self.args = args
         self.config = config
         self.loader = Loader(args, config)
-        # self.split = {'train': 'train', 'val': 'eval'}
-        self.split = {'train': 'tiny_eval'}
         self.data_dict = dd(dd)
 
         # Based on dataset statistics, not many examples length > 50
-
         print('Loading datasets...')
+        path = args.DATA
+        self.data_dict['data'], self.data_dict['vocab'] = self.loader.load(path)
+        print('Data loaded !')
+        self.data_dict['tokens'] = self.create_tokens()
 
-        for item in self.split:
-            path = args.DATA
-            self.data_dict[item]['data'], self.data_dict[item]['vocab'] = self.loader.load(path)
-            print(str(item) + ' data loaded !')
-            print('Fetching tokens ...')
-            self.data_dict[item]['tokens'] = self.create_tokens(item)
-            tokens = self.data_dict[item]['tokens']
-            print('Preparing ' + str(item) + ' data...')
-            ngram_idx = self.get_ngram_token(item) if args.NGRAMS else None
-            target_words, context_words, ngrams = [], [], []
-            for idx in range(0, len(tokens)):
-                target = tokens[idx]
-                # gram = self.get_ngram_tok(item, target)
-                gram = ngram_idx[idx] if args.NGRAMS else None
-                context = self.get_context(item, idx)
-                context_words.extend(context)
-                target_words.extend([target] * len(context))
-                if args.NGRAMS:
-                    ngrams.extend([gram] * len(context))
-            self.data_dict[item]['target'] = target_words
-            self.data_dict[item]['context'] = context_words
-            self.data_dict[item]['ngram'] = ngrams
-
-            print('Data preparation completed')
-
-    def get_context(self, split: string, idx: int) -> list:
-        """
-        This function returns list of context words for a given target word from batch
-        :param split: [int] type of data {train, val}
-        :param idx: [int] index of target word in the batch
-        :return: [list] list of c context words for given target word
-        """
-        tokens = self.data_dict[split]['tokens']
-        c = np.random.randint(1, self.config['WINDOW_SIZE'] + 1)
-        start = idx - c if (idx - c) > 0 else 0
-        stop = idx + c
-        target_words = tokens[start:idx] + tokens[idx + 1:stop + 1]
-        return list(target_words)
-
-    def get_tokens(self, split) -> list:
+    def get_tokens(self) -> list:
         '''
         :param split: [string] (train,val,test)
         :return: [list] list of words for given split
         '''
-        return self.data_dict[split]['tokens']
+        return self.data_dict['tokens']
 
-    def get_data(self, split: string) -> list:
-        '''
-        :param split: [string] (train,val,test)
-        :return: [list] list of words for given split
-        '''
-        return self.data_dict[split]['data']
-
-    def get_vocab_cls(self, split: string) -> Vocabulary:
+    def get_vocab_cls(self) -> Vocabulary:
         '''
 
         :param split: [string] (train,val,test)
         :return: [Vocabulary] Vocabulary class instance for given split
         '''
-        return self.data_dict[split]['vocab']
+        return self.data_dict['vocab']
 
-    def create_tokens(self, split: string) -> list:
+    def create_tokens(self) -> list:
         '''
         This function converts words from given split data into indices from vocabulary
         :param split: [string] (train,val,test)
         :return: [list] list of integers corresponding to indices of words in vocabulary for given split
         '''
-        words = self.get_data(split)
-        vocab = self.get_vocab_cls(split)
+        words = self.data_dict['data']
+        vocab = self.get_vocab_cls()
         tokens = [vocab.lookup_token(word) for word in words]
         new_tokens = sub_sampling(tokens) if self.args.SUBSAMPLING else tokens
         return new_tokens
@@ -450,29 +377,52 @@ class Dataset(Dataset):
         :param idx: [int] index for dataset object
         :return: [tuple] value at given index and a vocabulary object
         """
-        if self.args.NGRAMS:
-            return self.data_dict[self.args.RUN_MODE]['ngram'][idx], self.data_dict[self.args.RUN_MODE]['context'][idx]
-        else:
-            return self.data_dict[self.args.RUN_MODE]['target'][idx], self.data_dict[self.args.RUN_MODE]['context'][idx]
+        return self.data_dict['tokens'][idx]
 
     def __len__(self):
-        return self.data_dict[self.args.RUN_MODE].__len__()
+        return self.data_dict['tokens'].__len__()
 
 
 class DataLoader(object):
     def __init__(self,
                  dataset,
+                 config,
                  batch_size=5,
                  shuffle=True
                  ):
         self.data = dataset
-        self.batch_size = batch_size
+        self.config = config
+        self.batch_size = self.config['BATCH_SIZE']
         self.shuffle = shuffle  # TO DO
+
+    def get_target(self, tokens, idx: int) -> list:
+        """
+        This function returns list of context words for a given target word from batch
+        :param split: [int] type of data {train, val}
+        :param idx: [int] index of target word in the batch
+        :return: [list] list of c context words for given target word
+        """
+
+        c = np.random.randint(1, self.config['WINDOW_SIZE'] + 1)
+        start = idx - c if (idx - c) > 0 else 0
+        stop = idx + c
+        target_words = tokens[start:idx] + tokens[idx + 1:stop + 1]
+        return list(target_words)
 
     def get_batches(self):
         """
         It generate a batch of training data as pair of target and context word
         :return: [list] [list] list of target words and their corresponding context words
         """
-        for i in range(len(self.data)):
-            yield self.data[i:i + self.batch_size]
+        tokens = self.data.get_tokens()
+        n_batches = len(tokens) // self.batch_size
+        words = tokens[:n_batches * self.batch_size]
+        for idx in range(0, len(words), self.batch_size):
+            context_words, target_words = [], []
+            batch = words[idx:idx + self.batch_size]
+            for ii in range(len(batch)):
+                batch_x = batch[ii]
+                batch_y = self.get_target(batch, ii)
+                target_words.extend(batch_y)
+                context_words.extend([batch_x] * len(batch_y))
+            yield context_words, target_words
