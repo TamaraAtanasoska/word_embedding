@@ -152,7 +152,7 @@ def sub_sampling(tokens: list, threshold=1e-5) -> list:
     total_words = len(tokens)
     word_freq = {word: count / total_words for word, count in words_count.items()}
     word_prob = {word: 1 - np.sqrt(threshold / word_freq[word]) for word in words_count}  # Proposed Probability
-    sampled_vocab = [word for word in tokens if random.random() < word_prob[word]]
+    sampled_vocab = [word for word in tokens if random.random() < (1- word_prob[word])]
     return sampled_vocab
 
 
