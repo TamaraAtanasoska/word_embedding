@@ -5,20 +5,26 @@ device = 'cuda' if torch.cuda.is_available() else 'cpu'
 
 
 class SkipGram(nn.Module):
-    def __init__(self, configs, data_size, ng_dist = None):
+    def __init__(self, configs, data_size, ng_dist=None, NGRAMS=False, n_max=None, pad_index=None):
         super(SkipGram, self).__init__()
 
         self.cfgs = configs
         self.vocab_size = data_size
         self.ng_dist = ng_dist
         self.embedding_dim = self.cfgs['EMBEDDING_DIM']
+        self.ngrams = NGRAMS
+        self.n_max = n_max
 
-        self.in_embeddings = nn.Embedding(self.vocab_size, self.embedding_dim)
-        self.out_embeddings = nn.Embedding(self.vocab_size, self.embedding_dim)
+        self.in_embeddings = nn.Embedding(self.vocab_size, self.embedding_dim, padding_idx=pad_index)
+        self.out_embeddings = nn.Embedding(self.vocab_size, self.embedding_dim, padding_idx=pad_index)
 
         torch.nn.init.uniform_(self.in_embeddings.weight, -1, 1)
+
         torch.nn.init.uniform_(self.out_embeddings.weight, -1, 1)
-   
+        with torch.no_grad():
+            self.out_embeddings.weight[pad_index] = torch.zeros(self.embedding_dim)
+            self.in_embeddings.weight[pad_index] = torch.zeros(self.embedding_dim)
+
     def forward_in(self, data):
         input = torch.empty([len(data), self.embedding_dim], dtype=torch.float)
         for i, instance in enumerate(data):
