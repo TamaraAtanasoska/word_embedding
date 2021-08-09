@@ -382,7 +382,7 @@ class Dataset(Dataset):
         new_words = vocab_cls.lookup_ngram(words)
         ngram_tokens = [[vocab_cls.lookup_token(word)] + [vocab_cls.lookup_token(gram) for gram in n_word.split()] for
                         n_word, word in zip(new_words, words)]
-        ngram_tokens, self.n_max = collate_fn_padd(ngram_tokens)
+        ngram_tokens, self.n_max = collate_fn_padd(ngram_tokens, len(vocab_cls))
         return ngram_tokens
 
     def __getitem__(self, idx: int) -> tuple:
@@ -460,7 +460,7 @@ class DataLoader(object):
                 yield context_words, target_words
 
 
-def collate_fn_padd(batch):
+def collate_fn_padd(batch, pad_val=0):
     '''
     Padds batch of variable length
 
@@ -471,6 +471,6 @@ def collate_fn_padd(batch):
     lengths = torch.tensor([len(t) for t in batch]).to(device)
     ## padd
     batch = [torch.Tensor(t).to(device) for t in batch]
-    batch = torch.nn.utils.rnn.pad_sequence(batch, batch_first=True)
+    batch = torch.nn.utils.rnn.pad_sequence(batch, batch_first=True,padding_value=pad_val)
     max_ = lengths.max().item()
     return batch.type(torch.int64), max_

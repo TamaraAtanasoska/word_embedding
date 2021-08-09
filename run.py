@@ -99,14 +99,15 @@ class MainExec(object):
         random.seed(self.seed)
 
     def train(self):
-        wandb.init(entity='we', project='test')
+        name = 'ngram' if self.args.NGRAMS else 'word'
+        wandb.init(entity='we', project=name)
         dataset = utils.Dataset(self.args, self.cfgs)
         tokens = dataset.get_tokens()
         vocab = dataset.get_vocab_cls()
         pad_index = vocab.add_token('PAD</W>')
         vocab_size = len(vocab)
         ng_dist = utils.get_noise_dist(tokens)
-        dataloader = utils.DataLoader(dataset, self.cfgs)
+        dataloader = utils.DataLoader(dataset, self.cfgs, NGRAMS=self.args.NGRAMS)
         data_size = len(tokens)
         print('Total data instances: ', data_size)
         model = SkipGram(self.cfgs, vocab_size, ng_dist=ng_dist, NGRAMS=True, n_max=dataset.n_max,
@@ -118,7 +119,7 @@ class MainExec(object):
             print('Resume training...')
             start_epoch = self.args.CKPT_EPOCH
             print('Loading Model ...')
-            path = os.path.join(os.getcwd(), 'models',
+            path = os.path.join(os.getcwd(), 'models', name,
                                 self.model_ver,
                                 'epoch' + str(start_epoch) + '.pkl')
 
@@ -143,13 +144,14 @@ class MainExec(object):
                     # for input_words, target_words in dataloader.get_batches():
                     #print(input_words, target_words)
                     tepoch.set_description("Epoch {}".format(str(epoch)))
-                    #inputs, targets = torch.LongTensor(input_words).to(self.device),torch.LongTensor(target_words).to(self.device)
-
-                    # Input contains list of different length, therefore cannot be converted into LongTensor at this point
-
-                    targets = torch.LongTensor(target_words).to(self.device)
+                    if args.NGRAMS:
+                        inputs = torch.cat(input_words).to(self.device)
+                        targets = torch.tensor(target_words).to(self.device)
+                    else:
+                        inputs, targets = torch.LongTensor(input_words), torch.LongTensor(target_words)
+                        inputs, targets = inputs.to(self.device), targets.to(self.device)
                     optimizer.zero_grad()
-                    loss = loss_func(input_words, targets)
+                    loss = loss_func(inputs, targets)
                     loss.backward()
                     optimizer.step()
 
@@ -177,17 +179,16 @@ class MainExec(object):
 
             torch.save(
                 state,
-                os.path.join(os.getcwd(), 'models','test',
+                os.path.join(os.getcwd(), 'models', name,
                              self.model_ver,
                              'epoch' + str(epoch_finish) + '.pkl')
             )
 
-
-
-    def eval(self, vocab_ins = None, embeds = None):
+    def eval(self, vocab_ins=None, embeds=None):
+        name = 'ngram' if self.args.NGRAMS else 'word'
         if self.args.RUN_MODE == 'val':
             if self.args.CKPT_EPOCH is not None:
-                path = os.path.join(os.getcwd(),'models', 'test',
+                path = os.path.join(os.getcwd(), 'models', name,
                                     self.model_ver,
                                     'epoch' + str(self.args.CKPT_EPOCH) + '.pkl')
                 # Load state dict of the model
