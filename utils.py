@@ -307,7 +307,7 @@ class Loader(object):
         '''
         file = open(path).read()
         words = preprocess(file)
-        vocab = Vocabulary(self.cnfg)
+        vocab = Vocabulary(self.cnfg, NGRAMS=self.args.NGRAMS)
         vocab.create_vocab(words)
         print('Vocabulary created')
         return words, vocab
@@ -319,6 +319,7 @@ class Dataset(Dataset):
         self.config = config
         self.loader = Loader(args, config)
         self.data_dict = dd(dd)
+        self.n_max = None
 
         # Based on dataset statistics, not many examples length > 50
         print('Loading datasets...')
@@ -326,6 +327,9 @@ class Dataset(Dataset):
         self.data_dict['data'], self.data_dict['vocab'] = self.loader.load(path)
         print('Data loaded !')
         self.data_dict['tokens'] = self.create_tokens()
+        if args.NGRAMS:
+            self.data_dict['ngram_tokens'] = self.create_ngram_token()
+        print('Data preparation Completed !')
 
     def get_tokens(self) -> list:
         '''
@@ -333,6 +337,13 @@ class Dataset(Dataset):
         :return: [list] list of words for given split
         '''
         return self.data_dict['tokens']
+
+    def get_ngram_tokens(self) -> list:
+        '''
+        :param split: [string] (train,val,test)
+        :return: [list] list of words for given split
+        '''
+        return self.data_dict['ngram_tokens']
 
     def get_vocab_cls(self) -> Vocabulary:
         '''
@@ -354,7 +365,7 @@ class Dataset(Dataset):
         new_tokens = sub_sampling(tokens) if self.args.SUBSAMPLING else tokens
         return new_tokens
 
-    def get_ngram_token(self, split: string) -> list:
+    def create_ngram_token(self) -> list:
         '''
         This function convert each word into list of indices of words and ngrams present in the word.
         e.g: say word is 'hello' with index 134 in vocabulary. Next we look for all possible ngrams of hello present in
@@ -365,11 +376,13 @@ class Dataset(Dataset):
         :return: [list] list of integers corresponding to indices of words and ngram in vocabulary for given split
         '''
         print("Ngrams processing...")
-        tokens = [word for word in self.get_data(split)]
-        vocab_cls = self.get_vocab_cls(split)  # Using ngram vocabulary to look for ngrams in given word
-        new_tokens = vocab_cls.lookup_ngram(tokens)
-        ngram_tokens = [[vocab_cls.lookup_token(tok)] + [vocab_cls.lookup_token(gram) for gram in word.split()] for
-                        word, tok in zip(new_tokens, tokens)]
+        vocab_cls = self.get_vocab_cls()
+        words = [vocab_cls.lookup_index(token) for token in self.get_tokens()]
+        # Using ngram vocabulary to look for ngrams in given word
+        new_words = vocab_cls.lookup_ngram(words)
+        ngram_tokens = [[vocab_cls.lookup_token(word)] + [vocab_cls.lookup_token(gram) for gram in n_word.split()] for
+                        n_word, word in zip(new_words, words)]
+        ngram_tokens, self.n_max = collate_fn_padd(ngram_tokens)
         return ngram_tokens
 
     def __getitem__(self, idx: int) -> tuple:
@@ -377,7 +390,10 @@ class Dataset(Dataset):
         :param idx: [int] index for dataset object
         :return: [tuple] value at given index and a vocabulary object
         """
-        return self.data_dict['tokens'][idx]
+        if self.args.NGRAMS:
+            return self.data_dict['ngram_tokens'][idx]
+        else:
+            return self.data_dict['tokens'][idx]
 
     def __len__(self):
         return self.data_dict['tokens'].__len__()
@@ -387,13 +403,14 @@ class DataLoader(object):
     def __init__(self,
                  dataset,
                  config,
-                 batch_size=5,
+                 NGRAMS=False,
                  shuffle=True
                  ):
         self.data = dataset
         self.config = config
         self.batch_size = self.config['BATCH_SIZE']
         self.shuffle = shuffle  # TO DO
+        self.ngrams = NGRAMS
 
     def get_target(self, tokens, idx: int) -> list:
         """
@@ -414,15 +431,46 @@ class DataLoader(object):
         It generate a batch of training data as pair of target and context word
         :return: [list] [list] list of target words and their corresponding context words
         """
-        tokens = self.data.get_tokens()
-        n_batches = len(tokens) // self.batch_size
-        words = tokens[:n_batches * self.batch_size]
-        for idx in range(0, len(words), self.batch_size):
-            context_words, target_words = [], []
-            batch = words[idx:idx + self.batch_size]
-            for ii in range(len(batch)):
-                batch_x = batch[ii]
-                batch_y = self.get_target(batch, ii)
-                target_words.extend(batch_y)
-                context_words.extend([batch_x] * len(batch_y))
-            yield context_words, target_words
+        if self.ngrams:
+            n_tokens = self.data.get_ngram_tokens()
+            tokens = self.data.get_tokens()
+            n_batches = len(tokens) // self.batch_size
+            words = tokens[:n_batches * self.batch_size]
+            for idx in range(0, len(words), self.batch_size):
+                context_words, target_words = [], []
+                batch = words[idx:idx + self.batch_size]
+                for ii in range(len(batch)):
+                    batch_x = n_tokens[:n_batches * self.batch_size][idx:idx + self.batch_size][ii]
+                    batch_y = self.get_target(batch, ii)
+                    target_words.extend(batch_y)
+                    context_words.extend([batch_x] * len(batch_y))
+                yield context_words, target_words
+        else:
+            tokens = self.data.get_tokens()
+            n_batches = len(tokens) // self.batch_size
+            words = tokens[:n_batches * self.batch_size]
+            for idx in range(0, len(words), self.batch_size):
+                context_words, target_words = [], []
+                batch = words[idx:idx + self.batch_size]
+                for ii in range(len(batch)):
+                    batch_x = batch[ii]
+                    batch_y = self.get_target(batch, ii)
+                    target_words.extend(batch_y)
+                    context_words.extend([batch_x] * len(batch_y))
+                yield context_words, target_words
+
+
+def collate_fn_padd(batch):
+    '''
+    Padds batch of variable length
+
+    note: it converts things ToTensor manually here since the ToTensor transform
+    assume it takes in images rather than arbitrary tensors.
+    '''
+    ## get sequence lengths
+    lengths = torch.tensor([len(t) for t in batch]).to(device)
+    ## padd
+    batch = [torch.Tensor(t).to(device) for t in batch]
+    batch = torch.nn.utils.rnn.pad_sequence(batch, batch_first=True)
+    max_ = lengths.max().item()
+    return batch.type(torch.int64), max_

@@ -103,12 +103,14 @@ class MainExec(object):
         dataset = utils.Dataset(self.args, self.cfgs)
         tokens = dataset.get_tokens()
         vocab = dataset.get_vocab_cls()
+        pad_index = vocab.add_token('PAD</W>')
         vocab_size = len(vocab)
         ng_dist = utils.get_noise_dist(tokens)
         dataloader = utils.DataLoader(dataset, self.cfgs)
         data_size = len(tokens)
         print('Total data instances: ', data_size)
-        model = SkipGram(self.cfgs, vocab_size, ng_dist).to(self.device)
+        model = SkipGram(self.cfgs, vocab_size, ng_dist=ng_dist, NGRAMS=True, n_max=dataset.n_max,
+                         pad_index=pad_index).to(self.device)
         loss_func = NegativeSamplingLoss(model, self.cfgs).to(self.device)
         optimizer = Adam(model.parameters(), lr=self.cfgs['LEARNING_RATE'])
 
@@ -248,6 +250,5 @@ if __name__ == "__main__":
     with open('./config.yml', 'r') as f:
         config = yaml.safe_load(f)
 
-
-    m_exec = MainExec(args, config)
-    m_exec.run(args.RUN_MODE)
+    main_inst = MainExec(args, config)
+    main_inst.run(args.RUN_MODE)
