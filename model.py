@@ -26,31 +26,25 @@ class SkipGram(nn.Module):
             self.in_embeddings.weight[pad_index] = torch.zeros(self.embedding_dim)
 
     def forward_in(self, data):
-        input = torch.empty([len(data), self.embedding_dim], dtype=torch.float)
-        for i, instance in enumerate(data):
-            if type(instance) == int:
-                instance = torch.LongTensor([instance]).to(device)
-                input[i] = self.in_embeddings(instance)
-            else:
-                instance = torch.LongTensor(instance).to(device)
-                input[i] = sum(self.in_embeddings(instance))
-        return input.to(device)
-    
+        data = self.in_embeddings(data)
+        data = data.reshape(-1, self.n_max, self.embedding_dim).sum(1) if self.ngrams else data
+        return torch.nn.functional.normalize(data)
+
     def forward_out(self, data):
-        return self.out_embeddings(data)
+        return torch.nn.functional.normalize(self.out_embeddings(data))
 
     def forward_neg(self, updated_batch_size):
         ng_dist = torch.ones(self.vocab_size) if self.ng_dist is None else self.ng_dist
         ng_words = torch.multinomial(ng_dist,
                                      updated_batch_size * self.cfgs['NG_WORDS'],
-                                     replacement = True
-                                    ).to(device)
-        
-        #Reshape to size(BATCH_SIZE, NG_WORDS, EMBEDDING_DIM) 
+                                     replacement=True
+                                     ).to(device)
+
+        # Reshape to size(BATCH_SIZE, NG_WORDS, EMBEDDING_DIM)
         ng_embeddings = self.out_embeddings(ng_words).view(updated_batch_size,
-                                                          self.cfgs['NG_WORDS'],
-                                                          self.cfgs['EMBEDDING_DIM'],
-                                                         )
+                                                           self.cfgs['NG_WORDS'],
+                                                           self.cfgs['EMBEDDING_DIM'],
+                                                           )
         return ng_embeddings
 
 
@@ -62,14 +56,21 @@ class NegativeSamplingLoss(nn.Module):
         self.cfgs = configs
 
     def forward(self, input_words, output_words):
-
         in_embed = self.skipgram.forward_in(input_words).unsqueeze(2)
+
         out_embed = self.skipgram.forward_out(output_words).unsqueeze(1)
+
         updated_batch_size = in_embed.shape[0]
         ng_embed = self.skipgram.forward_neg(updated_batch_size).neg()
-        #print((in_embed.dtype), out_embed.dtype)
-        out_loss = torch.bmm(out_embed, in_embed).squeeze().sigmoid().log()
-        neg_loss = torch.bmm(ng_embed, in_embed).squeeze().sigmoid().log().sum(1)
+        ng_embed = torch.nan_to_num(ng_embed) if torch.isnan(ng_embed).any() or torch.isinf(ng_embed).any() else ng_embed
+
+        out_loss = torch.bmm(out_embed, in_embed).sigmoid().log().squeeze()
+        out_loss_check = torch.isnan(out_loss).any() or torch.isinf(out_loss).any()
+        out_loss = torch.nan_to_num(out_loss, neginf=-torch.max(out_loss).item()-1, posinf=torch.max(out_loss).item()+1) if out_loss_check else out_loss
+
+        neg_loss = torch.bmm(ng_embed, in_embed).sigmoid().log().squeeze().sum(1)
+        neg_loss_check = torch.isnan(neg_loss).any() or torch.isinf(neg_loss).any()
+        neg_loss = torch.nan_to_num(neg_loss, neginf=-torch.max(neg_loss).item()-1, posinf=torch.max(neg_loss).item()+1) if neg_loss_check else neg_loss
         neg_samp_loss = -(out_loss + neg_loss).mean()
 
         return neg_samp_loss
