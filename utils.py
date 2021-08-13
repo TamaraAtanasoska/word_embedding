@@ -44,62 +44,7 @@ def preprocess(text: string) -> list:
     trimmed_words = [word.lower() + '</w>' for word in words if word_counts[word] > 5]
     return trimmed_words
 
-def show_learning(embeddings:  Any, vocab: Any, device: Any) -> None:
-    '''
-    This function uses embeddings from the provided model and randomly select some words from vocabulary. Then for each
-    random word, it find similar words using cosine similarity. Finally it prints out top 6 similar words to randonly
-    chosen words.
-    :param model: Trained model
-    :param vocab: vocabulary instance
-    :param device:
-    :return: None
-    '''
 
-    embed_vectors = embeddings.weight
-
-    word_vocab = list(vocab.get_word_vocab())
-    total = len(word_vocab)
-    idxs = random.sample(range(total), 5)
-    words = [ word_vocab[idx] for idx in idxs]
-    valid_examples = torch.LongTensor([vocab.lookup_token(word) for word in words]).to(device)
-    valid_vectors = embeddings(valid_examples)
-
-    magnitudes = embed_vectors.pow(2).sum(dim=1).sqrt().unsqueeze(0)
-    valid_similarities = torch.mm(valid_vectors, embed_vectors.t()) / magnitudes
-    _, closest_idxs = valid_similarities.topk(6)
-
-    valid_examples, closest_idxs = valid_examples.to('cpu'), closest_idxs.to('cpu')
-    for ii, valid_idx in enumerate(valid_examples):
-        closest_words = [vocab.lookup_index(idx.item()) for idx in closest_idxs[ii]][1:]
-        print('Chosen word: '+vocab.lookup_index(valid_idx.item()) + " ----SIMILAR WORDS---- " + ', '.join(closest_words))
-    print("...\n")
-
-
-def word_analogy(words: list, embeddings, vocab, gram_model=False) -> string:
-    """
-    This function perform word analogy task to test how well word embeddings are trained.
-    NOTE:  This function expects given words to be part of vocabulary if gram_model = False i.e if we are not using
-            ngram model.
-    :param gram_model: Boolean to check if we'll use ngram model or not
-    :param vocab: Vocabulary of dataset
-    :param words: list of three words such that ### words[0] is to words[1] as words[2] is to ? ###
-    :param embeddings: trained embeddings from model
-    :return: target word which fits the analogy best
-    """
-    words = [word.lower() + '</w>' for word in words]
-    embed_vectors = embeddings.weight
-    tokens = torch.LongTensor([vocab.lookup_token(ex) for ex in words]).to(device)
-    vectors = embeddings(tokens)
-    inp1 = (vectors[1] - vectors[0]) + vectors[2]
-    inp2 = embed_vectors
-    magnitudes = inp2.pow(2).sum(dim=1).sqrt().unsqueeze(0) * inp1.pow(2).sum(dim=0).sqrt().unsqueeze(0)
-    similarities = torch.mm(inp1.unsqueeze(0), inp2.t()) / magnitudes
-    val, idxs = similarities.topk(5)
-    for id, v in zip(idxs.squeeze(), val.squeeze()):
-        print(vocab.lookup_index(id.item()), v.item())
-
-    target = vocab.lookup_index(idxs[0][0].item())
-    return target
 
 
 def sub_sampling(tokens: list, threshold=1e-5) -> list:

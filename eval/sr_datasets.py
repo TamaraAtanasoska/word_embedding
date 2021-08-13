@@ -92,14 +92,38 @@ def get_google_analogy(filename) -> dict:
     Google word analogy dataset
     :return: dictionary of different categories of data with list of data instances
     """
-    path = os.getcwd() + '/eval/data/' + filename +'.txt'
+    path = 'drive/MyDrive/data/' + filename +'.txt'
     line_data = open(path).read()
-    datalist = line_data.split('\n')
-    data = dd(list)
-    for line in datalist:
-        if line.startswith(':'):
-            key = line[2:]
-            data[key] = []
+    L = line_data.split('\n')
+    questions = []
+    answers = []
+    category = []
+    cat = None
+    for l in L:
+        if l.startswith(":"):
+            cat =l.lower().split()[1]
         else:
-            data[key].append(line.split())
-    return data
+            words =  l.split()
+            if words:
+              questions.append(words[0:3])
+              answers.append(words[3])
+              category.append(cat)
+
+    assert set(category) == set(['gram3-comparative', 'gram8-plural', 'capital-common-countries',
+                                         'city-in-state', 'family', 'gram9-plural-verbs', 'gram2-opposite',
+                                         'currency', 'gram4-superlative', 'gram6-nationality-adjective',
+                                         'gram7-past-tense',
+                                         'gram5-present-participle', 'capital-world', 'gram1-adjective-to-adverb'])
+
+
+    syntactic = set([c for c in set(category) if c.startswith("gram")])
+    category_high_level = []
+    for cat in category:
+         category_high_level.append("syntactic" if cat in syntactic else "semantic")
+
+    # dtype=object for memory efficiency
+    return Bunch(X=np.vstack(questions).astype("object"),
+                 y=np.hstack(answers).astype("object"),
+                 category=np.hstack(category).astype("object"),
+                 category_high_level=np.hstack(category_high_level).astype("object"))
+

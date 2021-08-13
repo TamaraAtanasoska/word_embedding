@@ -154,13 +154,10 @@ class MainExec(object):
                     loss = loss_func(inputs, targets)
                     loss.backward()
                     optimizer.step()
-
                     loss_sum += loss.item()
-
                     tepoch.set_postfix(loss=loss.item())
-                    sleep(0.1)
 
-            utils.show_learning(model.in_embeddings, vocab, self.device)
+            evaluation.show_learning(model.in_embeddings, vocab, self.device)
             self.loss = loss_sum/data_size
             self.batch_loss = loss_sum
 
