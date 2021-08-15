@@ -39,3 +39,15 @@ VERSION_NUM --CKPT-E EPOCH_NUM``
 ``python run.py --RUN_MODE val --SUBSAMPLING --NGRAMS --DATA data/ --VERSION 
 VERSION_NUM --CKPT-E EPOCH_NUM``
 
+###NOTE
+For ngram model, we add embeddings of word and its ngrams. Resulting vector is then multiplied with
+target word embedding or negative word embeddings. This multiplication can result in large 
+values and hence produce `inf`, `-inf` and `nan` values on performing further operations like 
+taking sigmoid or log. To tackle this situation, we replace `nan` and `inf` values with 0 and 
+max/min datatype values respectively using `torch.nan_to_num()` method. In addition to this we normalize
+input and output embedding vectors which also helps in tackling this situation. Though after 
+adding normalization, we required more training time to get better model.
+
+However, our model can still produce `nan` value for loss during training. So only solution for this
+situation is to decrease `lr` or `batch_size`.
+
