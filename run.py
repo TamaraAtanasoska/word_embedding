@@ -7,10 +7,9 @@ import yaml
 from tqdm import tqdm
 import utils
 from model import SkipGram, NegativeSamplingLoss
-from time import sleep
 from torch.optim import Adam
-from torch.utils.data import DataLoader
 import eval.evaluation as evaluation
+from pathlib import Path
 
 def parse_args():
     """Parse input arguments"""
@@ -86,7 +85,7 @@ class MainExec(object):
                 "cuda" if torch.cuda.is_available() else "cpu"
             )
         if self.args.VERSION is None:
-            self.model_ver = str(random.randint(0, 99999999))
+            self.model_ver = str(random.randint(0, 99999999)) # str(self.cfgs['NUM_MERGES'])
         else:
             self.model_ver = str(self.args.VERSION)
 
@@ -99,18 +98,17 @@ class MainExec(object):
         random.seed(self.seed)
 
     def train(self):
-        name = 'ngram' if self.args.NGRAMS else 'word'
-        wandb.init(entity='we', project=name)
+        #wandb.init(entity='we', project='regular')
         dataset = utils.Dataset(self.args, self.cfgs)
         tokens = dataset.get_tokens()
         vocab = dataset.get_vocab_cls()
-        pad_index = vocab.add_token('PAD</W>')
+        pad_index = vocab.add_token('PAD</w>')
         vocab_size = len(vocab)
         ng_dist = utils.get_noise_dist(tokens)
         dataloader = utils.DataLoader(dataset, self.cfgs, NGRAMS=self.args.NGRAMS)
         data_size = len(tokens)
         print('Total data instances: ', data_size)
-        model = SkipGram(self.cfgs, vocab_size, ng_dist=ng_dist, NGRAMS=True, n_max=dataset.n_max,
+        model = SkipGram(self.cfgs, vocab_size, ng_dist=ng_dist, NGRAMS=self.args.NGRAMS, n_max=dataset.n_max,
                          pad_index=pad_index).to(self.device)
         loss_func = NegativeSamplingLoss(model, self.cfgs).to(self.device)
         optimizer = Adam(model.parameters(), lr=self.cfgs['LEARNING_RATE'])
@@ -119,7 +117,7 @@ class MainExec(object):
             print('Resume training...')
             start_epoch = self.args.CKPT_EPOCH
             print('Loading Model ...')
-            path = os.path.join(os.getcwd(), 'models', name,
+            path = os.path.join(os.getcwd(), 'models',
                                 self.model_ver,
                                 'epoch' + str(start_epoch) + '.pkl')
 
@@ -128,9 +126,10 @@ class MainExec(object):
             model.load_state_dict(ckpt['state_dict'])
             optimizer.load_state_dict(ckpt['optimizer'])
         else:
-
+            # This block of code is usually executed when training is first started
             start_epoch = 0
-            os.mkdir(os.path.join(os.getcwd(), 'models', 'test', self.model_ver))
+            Path(os.path.join(os.getcwd(), 'models')).mkdir(parents=True, exist_ok=True)
+            os.mkdir(os.path.join(os.getcwd(), 'models', self.model_ver))
 
         model.train()
         print('Training started ...')
@@ -141,10 +140,12 @@ class MainExec(object):
                 for step, (
                         input_words, target_words
                 ) in enumerate(tepoch):
-                    # for input_words, target_words in dataloader.get_batches():
-                    #print(input_words, target_words)
+
                     tepoch.set_description("Epoch {}".format(str(epoch)))
-                    if args.NGRAMS:
+                    if self.args.NGRAMS:
+                        # In this case input_words are in form of list of lists, so using torch.cat we flatten list of
+                        # lists to single tensor which can be used to get embeddings. Each list contains indices of
+                        # word and its ngrams
                         inputs = torch.cat(input_words).to(self.device)
                         targets = torch.tensor(target_words).to(self.device)
                     else:
@@ -157,12 +158,12 @@ class MainExec(object):
                     loss_sum += loss.item()
                     tepoch.set_postfix(loss=loss.item())
 
-            evaluation.show_learning(model.in_embeddings, vocab, self.device)
+            evaluation.show_learning(model.out_embeddings, vocab, self.device)
+            #similarity_metric = evaluation.get_similarity_metric(model.out_embeddings, vocab)
             self.loss = loss_sum/data_size
             self.batch_loss = loss_sum
 
-
-            wandb.log({'batch_loss': self.batch_loss, 'loss': self.loss})
+            #wandb.log({'batch_loss': self.batch_loss, 'loss': self.loss, 'sim_metric': similarity_metric})
             if epoch % print_every == 0:
                 self.eval(vocab, model.out_embeddings)
             epoch_finish = epoch + 1
@@ -176,16 +177,24 @@ class MainExec(object):
 
             torch.save(
                 state,
-                os.path.join(os.getcwd(), 'models', name,
+                os.path.join(os.getcwd(), 'models',
                              self.model_ver,
                              'epoch' + str(epoch_finish) + '.pkl')
             )
 
     def eval(self, vocab_ins=None, embeds=None):
-        name = 'ngram' if self.args.NGRAMS else 'word'
+        """
+        This method evaluates trained embeddings based on some standard evaluation tasks like similarity between words
+        and word analogy. It can either be called from command line or from some other method. It needs created vocab
+        instance as well as trained embedding when called from another method. Otherwise, it retrieves required info
+        from model's saved data.
+        :param vocab_ins:
+        :param embeds:
+        :return:
+        """
         if self.args.RUN_MODE == 'val':
             if self.args.CKPT_EPOCH is not None:
-                path = os.path.join(os.getcwd(), 'models', name,
+                path = os.path.join(os.getcwd(), 'models',
                                     self.model_ver,
                                     'epoch' + str(self.args.CKPT_EPOCH) + '.pkl')
                 # Load state dict of the model
@@ -198,31 +207,35 @@ class MainExec(object):
         else:
             vocab = vocab_ins
             embeddings = embeds
-        #utils.show_learning(embeddings, vocab, self.device)
         evaluation.semantic_similarity_datasets(embeddings, vocab)
 
 
 
     def overfit(self):
-        dataset = utils.Dataset(args, config)
-        data = dataset.get_data(split=args.RUN_MODE)
-        vocab = dataset.get_vocab(split=args.RUN_MODE)
-        ng_dist = utils.get_noise_dist(data)
-        dataloader = DataLoader(dataset, config['BATCH_SIZE'])
+        dataset = utils.Dataset(self.args, self.cfgs)
+        tokens = dataset.get_tokens()
+        vocab = dataset.get_vocab_cls()
+        pad_index = vocab.add_token('PAD</w>')
+        vocab_size = len(vocab)
+        ng_dist = utils.get_noise_dist(tokens)
+        dataloader = utils.DataLoader(dataset, self.cfgs, NGRAMS=self.args.NGRAMS)
 
-        data_size = len(vocab)
-        model = SkipGram(self.cfgs, data_size, ng_dist).to(self.device)
+        model = SkipGram(self.cfgs, vocab_size, ng_dist=ng_dist, NGRAMS=self.args.NGRAMS, n_max=dataset.n_max,
+                         pad_index=pad_index).to(self.device)
         loss_func = NegativeSamplingLoss(model, self.cfgs).to(self.device)
         optimizer = Adam(model.parameters(), lr=self.cfgs['LEARNING_RATE'])
 
         model.train()
-        input_words, target_words = next(iter(dataloader))
-        inputs, targets = torch.LongTensor(input_words).to(self.device), \
-                          torch.LongTensor(target_words).to(self.device)
+        input_words, target_words = next(iter(dataloader.get_batches()))
+        if self.args.NGRAMS:
+            inputs = torch.cat(input_words).to(self.device)
+            targets = torch.tensor(target_words).to(self.device)
+        else:
+            inputs, targets = torch.LongTensor(input_words), torch.LongTensor(target_words)
+            inputs, targets = inputs.to(self.device), targets.to(self.device)
 
         for epoch in range(self.cfgs['EPOCHS']):
             optimizer.zero_grad()
-
             loss = loss_func(inputs, targets)
             loss.backward()
             optimizer.step()

@@ -1,5 +1,5 @@
 import string
-from typing import Any
+from typing import Any, List
 
 import torch
 import numpy as np
@@ -7,7 +7,11 @@ import numpy as np
 from scipy.stats.mstats import spearmanr
 from sklearn.metrics.pairwise import cosine_similarity
 import random
+
+from torch.nn import Embedding
+
 import eval.sr_datasets as sr_datasets
+from utils import Vocabulary
 
 device = 'cuda' if torch.cuda.is_available() else 'cpu'
 
@@ -42,7 +46,7 @@ def show_learning(embeddings:  Any, vocab: Any, device: Any) -> None:
     print("...\n")
 
 
-def word_analogy(words: list, embeddings, vocab, gram_model=False) -> string:
+def word_analogy(words: list, embeddings, vocab) -> List:
     """
     This function perform word analogy task to test how well word embeddings are trained.
     NOTE:  This function expects given words to be part of vocabulary if gram_model = False i.e if we are not using
@@ -53,7 +57,6 @@ def word_analogy(words: list, embeddings, vocab, gram_model=False) -> string:
     :param embeddings: trained embeddings from model
     :return: target word which fits the analogy best
     """
-    words = [word.lower() + '</w>' for word in words]
     embed_vectors = embeddings.weight
     tokens = torch.LongTensor([vocab.lookup_token(ex) for ex in words]).to(device)
     vectors = embeddings(tokens)
@@ -61,15 +64,26 @@ def word_analogy(words: list, embeddings, vocab, gram_model=False) -> string:
     inp2 = embed_vectors
     magnitudes = inp2.pow(2).sum(dim=1).sqrt().unsqueeze(0) * inp1.pow(2).sum(dim=0).sqrt().unsqueeze(0)
     similarities = torch.mm(inp1.unsqueeze(0), inp2.t()) / magnitudes
-    val, idxs = similarities.topk(10)
-    targets = []
+    val, idxs = similarities.topk(2)
+    '''targets = []
     for id, v in zip(idxs.squeeze(), val.squeeze()):
-        targets.append(vocab.lookup_index(id.item()))
+        targets.append(vocab.lookup_index(id.item()))'''
 
-    #target = vocab.lookup_index(idxs[0][1].item())
-    return targets
+    target = vocab.lookup_index(idxs[0][1].item())
+    return target
 
-def semantic_similarity_datasets(embeddings, vocab_inst):
+def semantic_similarity_datasets(embeddings: Embedding, vocab_inst: Vocabulary) -> None:
+    """
+    This method test trained embeddings against different datasets discussed in Section 5.1 of
+    [https://arxiv.org/abs/1607.04606] for evaluation. There are 6 dataset (3 English, 3 German)
+    which contain human similarity judgement values between word pair different words category.
+    This value is correlated against cosine similarity of those pairs (obtained using embeddings)
+    using Spearman's rank correlation.
+    :param embeddings: Trained embedding matrix from model
+    :param vocab_inst: Instance of Vocabulary class
+    :return: None
+    """
+
     datasets = {
         "WS353": sr_datasets.get_WS353(),
         "RG65": sr_datasets.get_RG65(),
@@ -83,23 +97,19 @@ def semantic_similarity_datasets(embeddings, vocab_inst):
 
     vocab = vocab_inst.get_vocab()
 
-    # Lists to store all the similarity measurments
-    spearman_corr_all = []
-    cosine_sim_all = []
-
     for name, data in datasets.items():
 
         print("Sampling data from ", name)
 
         if name in ['EN-GOOGLE', 'DE-GOOGLE']:
+            correct = {'semantic': 0, 'syntactic': 0}
+            total = {'semantic': 0, 'syntactic': 0}
             for i in range(len(data.X)):
                 words = data.X[i]
                 target = data.y[i]
-                correct = {'semantic': 0, 'syntactic': 0}
-                total = {'semantic': 0, 'syntactic': 0}
                 words = [word.lower() + '</w>' for word in words]
                 target = target.lower() + '</w>'
-                if all(elem in vocab.get_word_vocab() for elem in words + [target]) and words:
+                if all(elem in vocab_inst.get_word_vocab() for elem in words + [target]) and words:
                     total[data.category_high_level[i]] += 1
                     predicted = word_analogy(words, embeddings, vocab_inst)
                     if target in predicted:

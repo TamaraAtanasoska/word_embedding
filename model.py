@@ -10,10 +10,11 @@ class SkipGram(nn.Module):
 
         self.cfgs = configs
         self.vocab_size = data_size
-        self.ng_dist = ng_dist
+        self.ng_dist = ng_dist  # Probability distribution to get negative words for a given word
         self.embedding_dim = self.cfgs['EMBEDDING_DIM']
-        self.ngrams = NGRAMS
-        self.n_max = n_max
+        self.ngrams = NGRAMS  # If model is ngram based or not
+        self.n_max = n_max  # This is the maximum length of a list which is used as base for padding other lists
+
 
         self.in_embeddings = nn.Embedding(self.vocab_size, self.embedding_dim, padding_idx=pad_index)
         self.out_embeddings = nn.Embedding(self.vocab_size, self.embedding_dim, padding_idx=pad_index)
@@ -27,11 +28,12 @@ class SkipGram(nn.Module):
 
     def forward_in(self, data):
         data = self.in_embeddings(data)
-        data = data.reshape(-1, self.n_max, self.embedding_dim).sum(1) if self.ngrams else data
-        return torch.nn.functional.normalize(data)
+        data = torch.nn.functional.normalize(
+            data.reshape(-1, self.n_max, self.embedding_dim).sum(1)) if self.ngrams else data
+        return data
 
     def forward_out(self, data):
-        return torch.nn.functional.normalize(self.out_embeddings(data))
+        return torch.nn.functional.normalize(self.out_embeddings(data)) if self.ngrams else self.out_embeddings(data)
 
     def forward_neg(self, updated_batch_size):
         ng_dist = torch.ones(self.vocab_size) if self.ng_dist is None else self.ng_dist
@@ -62,15 +64,16 @@ class NegativeSamplingLoss(nn.Module):
 
         updated_batch_size = in_embed.shape[0]
         ng_embed = self.skipgram.forward_neg(updated_batch_size).neg()
-        ng_embed = torch.nan_to_num(ng_embed) if torch.isnan(ng_embed).any() or torch.isinf(ng_embed).any() else ng_embed
+        ng_embed = torch.nan_to_num(ng_embed) if torch.isnan(ng_embed).any() or torch.isinf(
+            ng_embed).any() else ng_embed
 
         out_loss = torch.bmm(out_embed, in_embed).sigmoid().log().squeeze()
         out_loss_check = torch.isnan(out_loss).any() or torch.isinf(out_loss).any()
-        out_loss = torch.nan_to_num(out_loss, neginf=-torch.max(out_loss).item()-1, posinf=torch.max(out_loss).item()+1) if out_loss_check else out_loss
+        out_loss = torch.nan_to_num(out_loss) if out_loss_check else out_loss
 
         neg_loss = torch.bmm(ng_embed, in_embed).sigmoid().log().squeeze().sum(1)
         neg_loss_check = torch.isnan(neg_loss).any() or torch.isinf(neg_loss).any()
-        neg_loss = torch.nan_to_num(neg_loss, neginf=-torch.max(neg_loss).item()-1, posinf=torch.max(neg_loss).item()+1) if neg_loss_check else neg_loss
+        neg_loss = torch.nan_to_num(neg_loss) if neg_loss_check else neg_loss
         neg_samp_loss = -(out_loss + neg_loss).mean()
 
         return neg_samp_loss

@@ -92,7 +92,7 @@ def get_google_analogy(filename) -> dict:
     Google word analogy dataset
     :return: dictionary of different categories of data with list of data instances
     """
-    path = 'drive/MyDrive/data/' + filename +'.txt'
+    path = 'eval/data/' + filename +'.txt'
     line_data = open(path).read()
     L = line_data.split('\n')
     questions = []
@@ -109,11 +109,6 @@ def get_google_analogy(filename) -> dict:
               answers.append(words[3])
               category.append(cat)
 
-    assert set(category) == set(['gram3-comparative', 'gram8-plural', 'capital-common-countries',
-                                         'city-in-state', 'family', 'gram9-plural-verbs', 'gram2-opposite',
-                                         'currency', 'gram4-superlative', 'gram6-nationality-adjective',
-                                         'gram7-past-tense',
-                                         'gram5-present-participle', 'capital-world', 'gram1-adjective-to-adverb'])
 
 
     syntactic = set([c for c in set(category) if c.startswith("gram")])
