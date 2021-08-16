@@ -8,7 +8,7 @@ The aim of the project is to reproduce the model and findings used in the
 
 Authors of the project are Bhuvanesh Verma and Tamara Atanasoska.
 
-#Data
+# Data
 
 We used different version of [Wikipedia data](https://dumps.wikimedia.org/). Largest dataset we used
 is first 1 Billion bytes of English Wikipedia which can be obtained from [here](http://mattmahoney.net/dc/enwik9.zip). 
@@ -74,7 +74,7 @@ VERSION_NUM --CKPT-E EPOCH_NUM``
 ### Overfitting
 ``python run.py --RUN_MODE train --DEBUG --SUBSAMPLING --NGRAMS --DATA data/text8``
 
-###NOTE
+### NOTE
 For ngram model, we add embeddings of word and its ngrams. Resulting vector is then multiplied with
 target word embedding or negative word embeddings. This multiplication can result in large 
 values and hence produce `inf`, `-inf` and `nan` values on performing further operations like 
