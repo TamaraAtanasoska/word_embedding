@@ -1,22 +1,14 @@
-from typing import Any
 
-import nltk
 import numpy as np
-import os, string
+import string
 from collections import Counter, defaultdict as dd
 import re, torch
-import torch.nn as nn
 import random
-# from scipy.spatial.distance import cosine as cosine_similarity
-from sklearn.metrics.pairwise import cosine_similarity
 from torch import Tensor
 from torch.utils.data import Dataset
-import yaml
-
-with open('./config.yml', 'r') as f:
-    config = yaml.safe_load(f)
 
 device = 'cuda' if torch.cuda.is_available() else 'cpu'
+
 
 def preprocess(text: string) -> list:
     """
@@ -45,8 +37,6 @@ def preprocess(text: string) -> list:
     return trimmed_words
 
 
-
-
 def sub_sampling(tokens: list, threshold=1e-5) -> list:
     """
     This function samples words from a defined probability distribution in order to counter imbalance of
@@ -61,6 +51,7 @@ def sub_sampling(tokens: list, threshold=1e-5) -> list:
     word_freq = {word: count / total_words for word, count in words_count.items()}
     word_prob = {word: 1 - np.sqrt(threshold / word_freq[word]) for word in words_count}  # Proposed Probability
     sampled_vocab = [word for word in tokens if random.random() < (1 - word_prob[word])]
+    print("Subsampling Completed !!")
     return sampled_vocab
 
 
@@ -119,7 +110,7 @@ def get_pairs(vocab: dict) -> dict:
 
 
 class Vocabulary(object):
-    def __init__(self, cnfig, token_to_idx=None, NGRAMS = False):
+    def __init__(self, cnfig, token_to_idx=None, NGRAMS=False):
 
         self.config = cnfig
         if token_to_idx is None:
@@ -238,77 +229,72 @@ class Vocabulary(object):
     def __len__(self):
         return len(self._token_to_idx)
 
-class Loader(object):
-    def __init__(self, args, cnfg):
-        self.args = args
-        self.cnfg = cnfg
-
-    def load(self, path: string) -> tuple:
-        '''
-
-        :param path: [string] path of data file to read from
-        :return: ( list, Vocabulary) list of words in dataset and a Vocabulary class created using these words is
-        returned
-        '''
-        file = open(path).read()
-        words = preprocess(file)
-        vocab = Vocabulary(self.cnfg, NGRAMS=self.args.NGRAMS)
-        vocab.create_vocab(words)
-        print('Vocabulary created')
-        return words, vocab
-
 
 class Dataset(Dataset):
     def __init__(self, args, config):
         self.args = args
         self.config = config
-        self.loader = Loader(args, config)
-        self.data_dict = dd(dd)
+        self.data_dict = dd()
         self.n_max = None
 
         # Based on dataset statistics, not many examples length > 50
         print('Loading datasets...')
         path = args.DATA
-        self.data_dict['data'], self.data_dict['vocab'] = self.loader.load(path)
+        self.data_dict['data'] = self.load(path)
         print('Data loaded !')
+        print('Data preprocessing ...')
         self.data_dict['tokens'] = self.create_tokens()
         if args.NGRAMS:
             self.data_dict['ngram_tokens'] = self.create_ngram_token()
-        print('Data preparation Completed !')
+        print('Data preparation Completed !!!')
+
+    def load(self, path: string) -> list:
+        '''
+
+        :param path: [string] path of data file to read from
+        :return: [list] list of words in dataset
+        returned
+        '''
+        file = open(path).read()
+        words = preprocess(file)
+        return words
 
     def get_tokens(self) -> list:
         '''
-        :param split: [string] (train,val,test)
-        :return: [list] list of words for given split
+        Returns whole dataset in integer form converted using vocabulary
+        :return: [list] data in integer form
         '''
         return self.data_dict['tokens']
 
     def get_ngram_tokens(self) -> list:
         '''
-        :param split: [string] (train,val,test)
-        :return: [list] list of words for given split
+        Returns
+        :return: [list[list]] It returns data in form of tokens with each word represented in a list containing indices
+                    of word itself and its ngrams. For more info refer to create_ngram_token() method
         '''
         return self.data_dict['ngram_tokens']
 
     def get_vocab_cls(self) -> Vocabulary:
         '''
-
-        :param split: [string] (train,val,test)
-        :return: [Vocabulary] Vocabulary class instance for given split
+        :return: [Vocabulary] Vocabulary class instance created using data
         '''
         return self.data_dict['vocab']
 
     def create_tokens(self) -> list:
         '''
-        This function converts words from given split data into indices from vocabulary
-        :param split: [string] (train,val,test)
-        :return: [list] list of integers corresponding to indices of words in vocabulary for given split
+        This function converts words from data into indices from vocabulary
+        :return: [list] list of integers corresponding to indices of words in vocabulary
         '''
         words = self.data_dict['data']
+        words = sub_sampling(words) if self.args.SUBSAMPLING else words
+        print('Creating vocabulary ...')
+        vocab = Vocabulary(self.config, NGRAMS=self.args.NGRAMS)
+        vocab.create_vocab(words)
+        print('Vocabulary created')
+        self.data_dict['vocab'] = vocab
         vocab = self.get_vocab_cls()
         tokens = [vocab.lookup_token(word) for word in words]
-        new_tokens = sub_sampling(tokens) if self.args.SUBSAMPLING else tokens
-        return new_tokens
+        return tokens
 
     def create_ngram_token(self) -> list:
         '''
@@ -317,8 +303,7 @@ class Dataset(Dataset):
         our ngram vocab. say we have 'he'(index:23) and 'lo'(index:48) in our ngram vocab. So we create a list of
         indices as [134, 23, 11, 48] which corresponds to [hello, he, l, lo]. We do this for all the words in given
         dataset and return a list of list.
-        :param split: [string] (train,val,test)
-        :return: [list] list of integers corresponding to indices of words and ngram in vocabulary for given split
+        :return: [list] list of integers corresponding to indices of words and ngram in vocabulary
         '''
         print("Ngrams processing...")
         vocab_cls = self.get_vocab_cls()
@@ -406,16 +391,16 @@ class DataLoader(object):
 
 
 def collate_fn_padd(batch, pad_val=0):
-    '''
-    Padds batch of variable length
+    """
+    Pads batch of variable length
 
     note: it converts things ToTensor manually here since the ToTensor transform
     assume it takes in images rather than arbitrary tensors.
-    '''
+    """
     ## get sequence lengths
     lengths = torch.tensor([len(t) for t in batch]).to(device)
     ## padd
     batch = [torch.Tensor(t).to(device) for t in batch]
-    batch = torch.nn.utils.rnn.pad_sequence(batch, batch_first=True,padding_value=pad_val)
+    batch = torch.nn.utils.rnn.pad_sequence(batch, batch_first=True, padding_value=pad_val)
     max_ = lengths.max().item()
     return batch.type(torch.int64), max_
