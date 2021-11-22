@@ -7,6 +7,7 @@ The aim of the project is to reproduce the model and findings used in the
 ["Enriching Word Vectors with Subword Information"](https://arxiv.org/pdf/1607.04606.pdf) by Bojanowski et al. 
 
 Authors of the project are Bhuvanesh Verma and Tamara Atanasoska.
+You can read the about the research, thought process and outcomes in the project report uploaded in the repository. 
 
 # Data
 
